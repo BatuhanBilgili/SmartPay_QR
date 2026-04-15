@@ -615,9 +615,9 @@ a {
 .numpad-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
+  gap: 8px;
   width: 100%;
-  max-width: 400px; /* Wider for tablet/mobile spread */
+  max-width: 320px;
   margin: 0 auto;
 }
 
@@ -625,8 +625,8 @@ a {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 64px;
-  font-size: 1.5rem;
+  height: 52px;
+  font-size: 1.25rem;
   font-weight: 700;
   color: var(--on-surface);
   border-radius: var(--radius-pill);
@@ -749,10 +749,10 @@ a {
   max-width: var(--max-width);
   background: var(--surface-container-low);
   border-radius: var(--radius-xl) var(--radius-xl) 0 0;
-  padding: 24px;
-  padding-bottom: max(24px, env(safe-area-inset-bottom));
+  padding: 20px;
+  padding-bottom: max(20px, env(safe-area-inset-bottom));
   z-index: 250;
-  box-shadow: var(--shadow-drawer);
+  box-shadow: 0 -10px 40px rgba(0,0,0,0.1);
 }
 
 /* Summary Accordion */

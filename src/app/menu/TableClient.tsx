@@ -126,7 +126,7 @@ export default function TableClient({
   const [splitPeopleCount, setSplitPeopleCount] = useState(2);
   const [selectedSplitQuantities, setSelectedSplitQuantities] = useState<Map<string, number>>(new Map());
   const [tipPercentage, setTipPercentage] = useState<number | null>(null);
-  const [isTipCustom, setIsTipCustom] = useState(false);
+  const [isEnteringCustomTip, setIsEnteringCustomTip] = useState(false);
   const [customTipStr, setCustomTipStr] = useState('');
   const [isSummaryExpanded, setIsSummaryExpanded] = useState(false);
 
@@ -286,7 +286,7 @@ export default function TableClient({
   }, [sessionId]);
 
   useEffect(() => {
-    if (activeTab === 'orders') {
+    if (activeTab === 'orders' || activeTab === 'split') {
       fetchOrders();
     }
   }, [activeTab, fetchOrders]);
@@ -371,7 +371,7 @@ export default function TableClient({
     });
     if (tipPercentage) {
       sum += (sum * tipPercentage) / 100;
-    } else if (isTipCustom && customTipStr) {
+    } else if (isEnteringCustomTip && customTipStr) {
       sum += parseFloat(customTipStr) || 0;
     }
     return sum;
@@ -379,15 +379,31 @@ export default function TableClient({
 
   const handleNumpadPress = (val: string) => {
     if (splitViewState === 'custom_amount') {
-      if (val === 'back') {
-        setCustomAmountStr(prev => prev.slice(0, -1));
-      } else if (val === '.') {
-        if (!customAmountStr.includes('.')) setCustomAmountStr(prev => prev + val);
+      if (isEnteringCustomTip) {
+        if (val === 'back') {
+          setCustomTipStr(prev => prev.slice(0, -1));
+        } else if (val === '.') {
+          if (!customTipStr.includes('.')) setCustomTipStr(prev => prev + val);
+        } else {
+          const next = customTipStr + val;
+          const numNext = parseFloat(next);
+          // Bahşiş kısıtlaması: Hesabın 2 katından fazla olamaz
+          if (numNext <= (totalBillAmount * 2) && next.replace('.', '').length < 8) {
+            setCustomTipStr(next);
+          }
+        }
       } else {
-        const next = customAmountStr + val;
-        const numNext = parseFloat(next);
-        if (numNext <= totalBillAmount && next.replace('.', '').length < 8) {
-          setCustomAmountStr(next);
+        if (val === 'back') {
+          setCustomAmountStr(prev => prev.slice(0, -1));
+        } else if (val === '.') {
+          if (!customAmountStr.includes('.')) setCustomAmountStr(prev => prev + val);
+        } else {
+          const next = customAmountStr + val;
+          const numNext = parseFloat(next);
+          // Tutar kısıtlaması: Toplam hesabı geçemez
+          if (numNext <= totalBillAmount && next.replace('.', '').length < 8) {
+            setCustomAmountStr(next);
+          }
         }
       }
     }
@@ -494,45 +510,52 @@ export default function TableClient({
               </div>
             ) : (
               <div className="orders-list">
-                {orderHistory.map((order) => {
-                  const isMyOrder = order.participantId === participantId;
+                {Array.from(orderHistory.reduce((acc, order) => {
+                  const pid = order.participantId || 'anon';
+                  if (!acc.has(pid)) acc.set(pid, []);
+                  acc.get(pid)!.push(order);
+                  return acc;
+                }, new Map<string, OrderHistoryItem[]>())).map(([pid, orders]) => {
+                  const firstOrder = orders[0];
+                  const isMyOrder = pid === participantId;
+                  const totalGuestAmount = orders.reduce((sum, o) => sum + parseFloat(o.totalAmount), 0);
 
                   return (
                     <div
-                      key={order.id}
+                      key={pid}
                       className={`order-wrapper ${isMyOrder ? 'order-wrapper--own' : 'order-wrapper--others'}`}
                     >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                        <div>
-                          <div className="headline-text" style={{ fontSize: '1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-                            {order.participantName || 'Misafir'}
-                            {isMyOrder && (
-                              <span className="label-text" style={{
-                                color: 'var(--primary)', background: 'var(--surface-container-highest)', padding: '2px 6px', borderRadius: '4px'
-                              }}>Sen</span>
-                            )}
-                          </div>
-                          <div className="body-text" style={{ fontSize: '0.75rem' }}>
+                      <div className="headline-text" style={{ fontSize: '1rem', display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                        {firstOrder.participantName || 'Misafir'}
+                        {isMyOrder && (
+                          <span className="label-text" style={{
+                            color: 'var(--primary)', background: 'var(--surface-container-highest)', padding: '2px 6px', borderRadius: '4px'
+                          }}>Sen</span>
+                        )}
+                      </div>
+
+                      {orders.map((order, oIdx) => (
+                        <div key={order.id} style={{ marginTop: oIdx === 0 ? 0 : 16, borderTop: oIdx === 0 ? 'none' : '1px solid var(--surface-container-highest)', paddingTop: oIdx === 0 ? 0 : 12 }}>
+                          <div className="body-text" style={{ fontSize: '0.75rem', marginBottom: 8, fontWeight: 600 }}>
                             {new Date(order.createdAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
                           </div>
-                        </div>
-                      </div>
-
-                      <div className="order-detail-list">
-                        {order.items.map((item) => (
-                          <div key={item.id} className="order-detail-item">
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                              <span className="headline-text" style={{ fontSize: '0.875rem', width: 24 }}>{item.quantity}x</span>
-                              <span className="body-text" style={{ fontWeight: 500, color: 'var(--on-surface)' }}>{item.name}</span>
-                            </div>
-                            <span className="headline-text" style={{ fontSize: '0.875rem' }}>₺{parseFloat(item.totalPrice).toFixed(0)}</span>
+                          <div className="order-detail-list" style={{ marginTop: 0 }}>
+                            {order.items.map((item) => (
+                              <div key={item.id} className="order-detail-item">
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                  <span className="headline-text" style={{ fontSize: '0.875rem', width: 24 }}>{item.quantity}x</span>
+                                  <span className="body-text" style={{ fontWeight: 500, color: 'var(--on-surface)' }}>{item.name}</span>
+                                </div>
+                                <span className="headline-text" style={{ fontSize: '0.875rem' }}>₺{parseFloat(item.totalPrice).toFixed(0)}</span>
+                              </div>
+                            ))}
                           </div>
-                        ))}
-                      </div>
+                        </div>
+                      ))}
 
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 24 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 20, paddingTop: 12, borderTop: '2px solid var(--surface-container-highest)' }}>
                         <span className="body-text" style={{ fontWeight: 600 }}>Toplam</span>
-                        <span className="headline-text" style={{ fontSize: '1.25rem' }}>₺{parseFloat(order.totalAmount).toFixed(0)}</span>
+                        <span className="headline-text" style={{ fontSize: '1.25rem' }}>₺{totalGuestAmount.toFixed(0)}</span>
                       </div>
                     </div>
                   );
@@ -557,7 +580,7 @@ export default function TableClient({
         {/* TAB: HESAP (Index 2) - Split */}
         {/* ═══════════════════════════════ */}
         {activeTab === 'split' && (
-          <main style={{ paddingBottom: splitViewState === 'summary' ? '120px' : '180px' }}>
+          <main style={{ paddingBottom: splitViewState === 'summary' ? '120px' : '260px' }}>
             {splitViewState === 'summary' && (
               <div style={{ padding: '0 20px', paddingTop: 20 }}>
                 <div style={{ background: 'var(--surface-container-low)', borderRadius: 'var(--radius-xl)', padding: 24, paddingBottom: 40, marginBottom: 24 }}>
@@ -565,7 +588,7 @@ export default function TableClient({
                   <h2 className="display-text" style={{ fontSize: '2.5rem', color: 'var(--primary)', marginBottom: 8 }}>₺{totalBillAmount.toFixed(2)}</h2>
                   <span className="body-text" style={{ fontSize: '0.875rem' }}>{allBillItems.length} items ordered • Service included</span>
                 </div>
-                
+
                 <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 24 }}>
                   <button className="btn-primary" onClick={() => setSplitSheetPhase('choose_method')} style={{ padding: '20px', fontSize: '1.125rem', width: '100%' }}>
                     Ödeme Yöntemi Seç
@@ -604,7 +627,7 @@ export default function TableClient({
                   </div>
                 </div>
                 <p className="body-text" style={{ marginBottom: 24 }}>Select the items you wish to settle. Other guests can choose the remaining quantities.</p>
-                
+
                 <div style={{ marginBottom: 32 }}>
                   {allBillItems.map((item, idx) => {
                     const selectedQ = selectedSplitQuantities.get(item.id) || 0;
@@ -630,7 +653,7 @@ export default function TableClient({
                   })}
                 </div>
 
-                <div className="fixed-bottom-bar" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 40, paddingBottom: 40 }}>
                   <div style={{ textAlign: 'center' }}>
                     <span className="label-text" style={{ letterSpacing: '0.1em' }}>SİZİN SEÇİMİNİZ</span>
                     <h3 className="display-text" style={{ fontSize: '1.5rem', marginTop: 4 }}>
@@ -651,7 +674,7 @@ export default function TableClient({
                     <span className="material-symbols-outlined">arrow_back</span>
                   </button>
                   <div>
-                    <h2 className="display-text" style={{ fontSize: '2.5rem', lineHeight: 1 }}>The Fair<br/><span style={{ color: 'var(--primary)', fontStyle: 'italic' }}>Share.</span></h2>
+                    <h2 className="display-text" style={{ fontSize: '2.5rem', lineHeight: 1 }}>The Fair<br /><span style={{ color: 'var(--primary)', fontStyle: 'italic' }}>Share.</span></h2>
                     <span className="label-text" style={{ color: 'var(--on-surface-variant)' }}>TABLE {table.tableNumber} • L'ARTISAN BISTRO</span>
                   </div>
                 </div>
@@ -668,7 +691,7 @@ export default function TableClient({
                   </div>
 
                   <span className="label-text">SPLIT BETWEEN</span>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--surface-container-lowest)', padding: 8, borderRadius: 'var(--radius-pill)', marginTop: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--surface-container-lowest)', padding: 8, borderRadius: 'var(--radius-pill)', marginTop: 8, marginBottom: 24 }}>
                     <button onClick={() => setSplitPeopleCount(Math.max(1, splitPeopleCount - 1))} style={{ width: 48, height: 48, background: 'var(--surface-container-low)', borderRadius: '50%', fontWeight: 700 }}>−</button>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <span style={{ fontSize: '1.5rem', fontWeight: 800 }}>{splitPeopleCount}</span>
@@ -677,7 +700,7 @@ export default function TableClient({
                     <button onClick={() => setSplitPeopleCount(splitPeopleCount + 1)} style={{ width: 48, height: 48, background: 'var(--primary)', color: 'white', borderRadius: '50%', fontWeight: 700 }}>+</button>
                   </div>
 
-                  <div style={{ background: 'var(--surface-container-lowest)', padding: 24, borderRadius: 'var(--radius-xl)', marginTop: 24, textAlign: 'center' }}>
+                  <div style={{ textAlign: 'center' }}>
                     <span className="label-text">EACH PERSON PAYS</span>
                     <h2 className="display-text" style={{ fontSize: '3.5rem', letterSpacing: '-0.04em', marginTop: 8 }}>
                       <span style={{ fontSize: '1.5rem', verticalAlign: 'top', color: 'var(--primary)', marginRight: 4 }}>₺</span>
@@ -696,7 +719,7 @@ export default function TableClient({
             )}
 
             {splitViewState === 'custom_amount' && (
-              <div style={{ padding: '0 20px', animation: 'slideInRight 0.3s forwards', display: 'flex', flexDirection: 'column', minHeight: 'calc(100vh - 120px)' }}>
+              <div style={{ padding: '0 20px', animation: 'slideInRight 0.3s forwards', display: 'flex', flexDirection: 'column' }}>
                 <div style={{ display: 'flex', justifyContent: 'flex-start', paddingTop: 16, marginBottom: 16 }}>
                   <button onClick={() => setSplitViewState('summary')}>
                     <span className="material-symbols-outlined">close</span>
@@ -708,42 +731,52 @@ export default function TableClient({
                   <h3 className="display-text" style={{ fontSize: '2rem' }}>₺{totalBillAmount.toFixed(2)}</h3>
                 </div>
 
-                <div style={{ textAlign: 'center', marginBottom: 24 }}>
-                  <span className="label-text" style={{ color: 'var(--primary)', letterSpacing: '0.1em' }}>ENTER CUSTOM AMOUNT</span>
+                <div style={{ textAlign: 'center', marginBottom: 24, cursor: 'pointer' }} onClick={() => setIsEnteringCustomTip(false)}>
+                  <span className="label-text" style={{ color: isEnteringCustomTip ? 'var(--on-surface-variant)' : 'var(--primary)', letterSpacing: '0.1em' }}>
+                    {isEnteringCustomTip ? 'CLICK TO EDIT AMOUNT' : 'ENTER CUSTOM AMOUNT'}
+                  </span>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 8 }}>
                     <span style={{ fontSize: '2rem', color: 'var(--on-surface-variant)', marginRight: 8, fontWeight: 300 }}>₺</span>
-                    <span style={{ fontSize: '4.5rem', fontWeight: 800, letterSpacing: '-0.04em', lineHeight: 1 }}>{customAmountStr || '0.00'}</span>
-                    <div className="cursor-blink" style={{ width: 3, height: 50, background: 'var(--primary)', marginLeft: 8 }} />
+                    <span style={{ fontSize: '4.5rem', fontWeight: 800, letterSpacing: '-0.04em', lineHeight: 1, color: isEnteringCustomTip ? 'var(--on-surface-variant)' : 'var(--on-surface)' }}>
+                      {customAmountStr || '0.00'}
+                    </span>
+                    {!isEnteringCustomTip && <div className="cursor-blink" style={{ width: 3, height: 50, background: 'var(--primary)', marginLeft: 8 }} />}
                   </div>
                 </div>
 
                 {/* Custom Amount Tip Selection */}
                 <div style={{ background: 'var(--surface-container-low)', padding: 16, borderRadius: 'var(--radius-xl)', marginBottom: 32 }}>
-                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
                     <h4 className="headline-text" style={{ fontSize: '1rem' }}>Leave a tip?</h4>
-                    {tipPercentage && <span className="label-text" style={{ color: 'var(--primary)' }}>+₺{(parseFloat(customAmountStr || '0') * tipPercentage / 100).toFixed(2)}</span>}
-                   </div>
+                    {(tipPercentage || (isEnteringCustomTip && customTipStr)) && (
+                      <span className="label-text" style={{ color: 'var(--primary)' }}>
+                        +₺{tipPercentage
+                          ? (parseFloat(customAmountStr || '0') * tipPercentage / 100).toFixed(2)
+                          : parseFloat(customTipStr || '0').toFixed(2)}
+                      </span>
+                    )}
+                  </div>
                   <div className="tip-buttons" style={{ marginTop: 0 }}>
                     {[10, 15, 20].map(pct => (
-                      <button key={pct} className={`tip-btn ${tipPercentage === pct ? 'tip-btn--active' : ''}`} onClick={() => { setTipPercentage(pct); setIsTipCustom(false); }}>
+                      <button key={pct} className={`tip-btn ${(tipPercentage === pct && !isEnteringCustomTip) ? 'tip-btn--active' : ''}`} onClick={() => { setTipPercentage(pct); setIsEnteringCustomTip(false); setCustomTipStr(''); }}>
                         {pct}%
                       </button>
                     ))}
-                    <button className={`tip-btn ${isTipCustom ? 'tip-btn--active' : ''}`} onClick={() => { 
-                      const val = prompt('Özel Bahşiş Oranı (%) - Maks 100', '25');
-                      if (val) {
-                        const n = Math.min(100, parseInt(val));
-                        setTipPercentage(n);
-                        setIsTipCustom(true);
-                      }
-                    }}>
-                      {isTipCustom ? `%${tipPercentage}` : 'Özel'}
+                    <button
+                      className={`tip-btn ${(isEnteringCustomTip || (!tipPercentage && customTipStr)) ? 'tip-btn--active' : ''}`}
+                      onClick={() => {
+                        setIsEnteringCustomTip(true);
+                        setTipPercentage(null);
+                      }}
+                      style={{ fontSize: (isEnteringCustomTip && !customTipStr) ? '0.875rem' : '1rem' }}
+                    >
+                      {(isEnteringCustomTip || (!tipPercentage && customTipStr)) ? (customTipStr ? `₺${customTipStr}` : 'Tutar') : 'Özel'}
                     </button>
                   </div>
                 </div>
 
                 <div className="numpad-grid" style={{ marginBottom: 40, flex: 1, maxWidth: '100%' }}>
-                  {['1','2','3','4','5','6','7','8','9','.', '0'].map(num => (
+                  {['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0'].map(num => (
                     <div key={num} className="numpad-btn" style={{ height: 56 }} onClick={() => handleNumpadPress(num)}>{num}</div>
                   ))}
                   <div className="numpad-btn" style={{ height: 56 }} onClick={() => handleNumpadPress('back')}>
@@ -751,23 +784,34 @@ export default function TableClient({
                   </div>
                 </div>
 
-                <div className="fixed-bottom-bar" style={{ display: 'flex', flexDirection: 'column' }}>
-                  <div style={{ textAlign: 'center', marginBottom: 12 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', marginTop: 'auto', paddingBottom: 40 }}>
+                  <div style={{ textAlign: 'center', marginBottom: 20 }}>
                     <span className="label-text" style={{ opacity: 0.7 }}>ÖDENECEK TOPLAM</span>
-                    <h3 className="display-text" style={{ fontSize: '1.75rem' }}>
-                      ₺{(parseFloat(customAmountStr || '0') * (1 + (tipPercentage || 0) / 100)).toFixed(2)}
+                    {(tipPercentage || customTipStr) && (
+                      <div className="body-text" style={{ fontSize: '0.75rem', marginTop: 4, color: 'var(--on-surface-variant)' }}>
+                        ₺{parseFloat(customAmountStr || '0').toFixed(2)} + ₺{tipPercentage
+                          ? (parseFloat(customAmountStr || '0') * tipPercentage / 100).toFixed(2)
+                          : (parseFloat(customTipStr || '0').toFixed(2))} Bahşiş
+                      </div>
+                    )}
+                    <h3 className="display-text" style={{ fontSize: '1.75rem', marginTop: 4 }}>
+                      ₺{(parseFloat(customAmountStr || '0') + (tipPercentage ? (parseFloat(customAmountStr || '0') * tipPercentage / 100) : parseFloat(customTipStr || '0'))).toFixed(2)}
                     </h3>
                   </div>
-                  <button className="btn-primary" 
-                    onClick={() => { 
+                  <button className="btn-primary"
+                    onClick={() => {
                       const base = parseFloat(customAmountStr || '0');
-                      const total = base * (1 + (tipPercentage || 0) / 100);
+                      const tip = tipPercentage ? (base * tipPercentage / 100) : parseFloat(customTipStr || '0');
+                      const total = base + tip;
                       if (base > 0) {
-                        alert(`₺${total.toFixed(2)} Ödeme tamamlandı!`); 
-                        setSplitViewState('summary'); 
+                        alert(`₺${total.toFixed(2)} Ödeme tamamlandı!`);
+                        setSplitViewState('summary');
                         setCustomAmountStr('');
+                        setCustomTipStr('');
+                        setTipPercentage(null);
+                        setIsEnteringCustomTip(false);
                       }
-                    }} 
+                    }}
                     style={{ padding: '20px', fontSize: '1.25rem', width: '100%' }}>
                     Ödemeyi Tamamla
                   </button>
@@ -856,7 +900,7 @@ export default function TableClient({
             <div style={{ width: 40, height: 4, background: 'var(--surface-container-highest)', borderRadius: 2, margin: '0 auto 24px' }} />
             <h3 className="display-text" style={{ fontSize: '1.5rem', textAlign: 'center', marginBottom: 8 }}>Choose Payment Method</h3>
             <p className="body-text" style={{ textAlign: 'center', marginBottom: 32 }}>Select how you'd like to settle Table {table.tableNumber}</p>
-            
+
             <button className="split-option-btn" onClick={() => setSplitSheetPhase('split_options')}>
               <div style={{ display: 'flex', alignItems: 'center' }}>
                 <div className="split-option-icon"><span className="material-symbols-outlined">group</span></div>
