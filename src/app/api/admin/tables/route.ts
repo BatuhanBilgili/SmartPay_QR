@@ -43,9 +43,11 @@ export async function GET() {
       else if (confirmedOrders.length > 0) tableStatus = 'confirmed';
       else if (servedOrders.length > 0) tableStatus = 'served';
 
-      const totalAmount = allOrders.reduce((sum: number, o: any) => 
-        sum + parseFloat(o.totalAmount || '0'), 0
-      );
+      const totalAmount = allOrders
+        .filter((o: any) => o.status !== 'cancelled')
+        .reduce((sum: number, o: any) => 
+          sum + parseFloat(o.totalAmount || '0'), 0
+        );
 
       return {
         id: table.id,

@@ -123,8 +123,7 @@ export const menuItems = pgTable('menu_items', {
   price: numeric('price', { precision: 10, scale: 2 }).notNull(),
   imageUrl: text('image_url'),
   isAvailable: boolean('is_available').notNull().default(true),
-  preparationTime: integer('preparation_time'), // dakika cinsinden
-  allergens: text('allergens'), // virgülle ayrılmış alerjen listesi
+  maxQuantity: integer('max_quantity'), // Bir oturumda maksimum kaç adet sipariş edilebilir
   sortOrder: integer('sort_order').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

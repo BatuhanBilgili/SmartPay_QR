@@ -1,22 +1,86 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import '../admin.css';
 
-type NavTab = 'dashboard' | 'orders' | 'menu' | 'staff' | 'settings';
+interface KitchenItem {
+  id: string;
+  name: string;
+  quantity: number;
+  status: string;
+  notes: string | null;
+}
+
+interface KitchenTicket {
+  id: string;
+  orderNumber: string;
+  tableNumber: number;
+  tableLabel: string;
+  createdAt: string;
+  status: string;
+  items: KitchenItem[];
+}
 
 export default function KitchenPanelPage() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
-  const [mobileNavTab, setMobileNavTab] = useState<string>('menu');
+  const [tickets, setTickets] = useState<KitchenTicket[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [printingTicketId, setPrintingTicketId] = useState<string | null>(null);
+
+  // ── Fetch kitchen orders ──
+  const fetchTickets = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/kitchen/orders');
+      const data = await res.json();
+      if (data.success) {
+        setTickets(data.data);
+      }
+    } catch (err) {
+      console.error('Bilet yükleme hatası:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     const role = localStorage.getItem('admin_role');
     if (role !== 'kitchen') {
       router.push('/admin');
+      return;
     }
-  }, [router]);
+    fetchTickets();
+    const interval = setInterval(fetchTickets, 15000);
+    return () => clearInterval(interval);
+  }, [router, fetchTickets]);
+
+  const handlePrint = (ticketId: string) => {
+    setPrintingTicketId(ticketId);
+    setTimeout(() => {
+      window.print();
+      setPrintingTicketId(null);
+    }, 100);
+  };
+
+  const markTicketReady = async (orderId: string) => {
+    try {
+      await fetch(`/api/admin/orders/${orderId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'preparing' }),
+      });
+      
+      await fetch(`/api/admin/orders/${orderId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'served' }),
+      });
+
+      fetchTickets();
+    } catch (err) {
+      console.error('Bilet tamamlama hatası:', err);
+    }
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('admin_role');
@@ -26,263 +90,91 @@ export default function KitchenPanelPage() {
 
   return (
     <div className="admin-body">
-      {/* ── Top App Bar ── */}
       <header className="admin-topbar">
         <div className="admin-topbar-left">
           <span className="admin-menu-btn material-symbols-outlined">menu</span>
-          <span className="admin-topbar-brand">The Culinary Editorial</span>
+          <span className="admin-topbar-brand">KITCHEN DISPLAY SYSTEM.</span>
         </div>
         <div className="admin-topbar-right">
-          <nav className="admin-topbar-nav">
-            <a className={activeTab === 'dashboard' ? 'active' : ''} onClick={() => setActiveTab('dashboard')}>Dashboard</a>
-            <a className={activeTab === 'orders' ? 'active' : ''} onClick={() => setActiveTab('orders')}>Live Orders</a>
-            <a className={activeTab === 'staff' ? 'active' : ''} onClick={() => setActiveTab('staff')}>Kitchen Status</a>
-          </nav>
-          <div className="admin-avatar" onClick={handleLogout} title="Çıkış Yap">
-            👨‍🍳
+          <div className="admin-status-pill" style={{ marginRight: 16 }}>
+            <div className="admin-status-dot"></div>
+            <span className="admin-status-text">Live Production</span>
           </div>
+          <div className="admin-avatar" onClick={handleLogout} title="Çıkış Yap">👨‍🍳</div>
         </div>
       </header>
 
       <div className="admin-layout">
-        {/* ── Sidebar (Desktop) ── */}
-        <aside className="admin-sidebar">
-          <div className="admin-sidebar-profile">
-            <div className="admin-sidebar-profile-icon" style={{ background: 'var(--primary)', boxShadow: 'var(--admin-shadow-primary)' }}>
-              <span className="material-symbols-outlined" style={{ color: 'white' }}>restaurant</span>
-            </div>
-            <div className="admin-sidebar-profile-info">
-              <p>Editorial Manager</p>
-              <p>Shift: Evening</p>
-            </div>
-          </div>
-
-          <nav className="admin-sidebar-nav">
-            <a className={`admin-sidebar-item ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>
-              <span className="material-symbols-outlined">dashboard</span>
-              Dashboard
-            </a>
-            <a className={`admin-sidebar-item ${activeTab === 'orders' ? 'active' : ''}`} onClick={() => setActiveTab('orders')}>
-              <span className="material-symbols-outlined">pending_actions</span>
-              Live Orders
-            </a>
-            <a className={`admin-sidebar-item ${activeTab === 'menu' ? 'active' : ''}`} onClick={() => setActiveTab('menu')}>
-              <span className="material-symbols-outlined">edit_note</span>
-              Menu Editor
-            </a>
-            <a className={`admin-sidebar-item ${activeTab === 'staff' ? 'active' : ''}`} onClick={() => setActiveTab('staff')}>
-              <span className="material-symbols-outlined">badge</span>
-              Staff Management
-            </a>
-            <a className={`admin-sidebar-item ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => setActiveTab('settings')}>
-              <span className="material-symbols-outlined">settings</span>
-              Settings
-            </a>
-          </nav>
-        </aside>
-
-        {/* ── Main Content ── */}
         <main className="admin-main">
-          {/* Header */}
-          <section style={{ marginBottom: 48 }}>
-            <span style={{ fontSize: '0.625rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--primary)', marginBottom: 8, display: 'block' }}>
-              System Pulse
-            </span>
-            <div className="admin-page-header" style={{ marginBottom: 0 }}>
-              <h2 className="admin-page-title">Kitchen Overview.</h2>
-              <div className="admin-status-pill">
-                <div className="admin-status-dot"></div>
-                <span className="admin-status-text">Kitchen Live: 14 Stations Active</span>
-              </div>
-            </div>
-          </section>
-
-          {/* ── Bento Grid: Revenue + Stats ── */}
-          <div className="bento-grid">
-            {/* Revenue Card */}
-            <div className="bento-span-8">
-              <div className="admin-revenue-card">
-                <div className="glow"></div>
-                <div style={{ position: 'relative', zIndex: 2 }}>
-                  <p className="admin-revenue-label">Today&apos;s Revenue</p>
-                  <h3 className="admin-revenue-value">₺124,825</h3>
-                  <div className="admin-revenue-trend">
-                    <span className="material-symbols-outlined">trending_up</span>
-                    <span>+12% vs yesterday</span>
-                  </div>
-                </div>
-                {/* Chart */}
-                <div className="admin-chart-bars">
-                  <div className="admin-chart-bar" style={{ height: '40%' }}></div>
-                  <div className="admin-chart-bar" style={{ height: '55%' }}></div>
-                  <div className="admin-chart-bar" style={{ height: '35%' }}></div>
-                  <div className="admin-chart-bar" style={{ height: '70%' }}></div>
-                  <div className="admin-chart-bar admin-chart-bar--active" style={{ height: '85%' }}></div>
-                  <div className="admin-chart-bar" style={{ height: '60%' }}></div>
-                  <div className="admin-chart-bar" style={{ height: '95%' }}></div>
-                  <div className="admin-chart-bar" style={{ height: '45%' }}></div>
-                </div>
-              </div>
-            </div>
-
-            {/* Ticket Time + Active Orders */}
-            <div className="bento-span-4">
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 24, height: '100%' }}>
-                {/* Ticket Time */}
-                <div className="admin-ticket-card">
-                  <div className="admin-ticket-header">
-                    <span className="material-symbols-outlined" style={{ fontSize: '2.5rem', fontVariationSettings: "'FILL' 1" }}>timer</span>
-                    <span className="admin-ticket-urgent">URGENT</span>
-                  </div>
-                  <p className="admin-ticket-label">Avg. Ticket Time</p>
-                  <h4 className="admin-ticket-value">14:20</h4>
-                  <p className="admin-ticket-note">Slower than usual peak</p>
-                </div>
-
-                {/* Active Orders */}
-                <div className="admin-orders-card">
-                  <div className="admin-orders-header">
-                    <p style={{ fontWeight: 700, color: 'var(--on-surface)' }}>Active Orders</p>
-                    <span className="material-symbols-outlined" style={{ color: 'var(--primary)' }}>restaurant</span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                    <span className="admin-orders-value">42</span>
-                    <span className="admin-orders-label">In queue</span>
-                  </div>
-                </div>
-              </div>
-            </div>
+          <div className="admin-page-header" style={{ marginBottom: 32 }}>
+            <h1 className="admin-page-title">Mutfak</h1>
+            <p className="admin-page-subtitle">Hazırlanması gereken {tickets.length} aktif sipariş bulunuyor.</p>
           </div>
 
-          {/* ── Popular Items + Kitchen Log ── */}
-          <div className="admin-kitchen-subgrid">
-            {/* Signature Performance */}
-            <div className="kitchen-span-8">
-              <div className="admin-performance-card">
-                <div className="admin-performance-header">
-                  <h4 className="admin-performance-title">Signature Performance.</h4>
-                  <a className="admin-performance-link">Full Menu Analytics</a>
-                </div>
+          <button className="admin-fab" onClick={fetchTickets} title="Yenile">
+            <span className="material-symbols-outlined">refresh</span>
+          </button>
 
-                {/* Item 1 */}
-                <div className="admin-perf-item">
-                  <div className="admin-perf-img">
-                    <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, #a3e635, #65a30d)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <span className="material-symbols-outlined" style={{ color: 'white', fontSize: '2rem' }}>local_dining</span>
-                    </div>
-                  </div>
-                  <div className="admin-perf-info">
-                    <div className="admin-perf-row">
-                      <h5 className="admin-perf-name">Heirloom Spring Bowl</h5>
-                      <span className="admin-perf-revenue">₺14,200 today</span>
-                    </div>
-                    <div className="admin-perf-bar">
-                      <div className="admin-perf-bar-fill" style={{ width: '85%' }}></div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Item 2 */}
-                <div className="admin-perf-item">
-                  <div className="admin-perf-img">
-                    <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, #fb923c, #ea580c)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <span className="material-symbols-outlined" style={{ color: 'white', fontSize: '2rem' }}>local_pizza</span>
-                    </div>
-                  </div>
-                  <div className="admin-perf-info">
-                    <div className="admin-perf-row">
-                      <h5 className="admin-perf-name">Truffle Marguerita</h5>
-                      <span className="admin-perf-revenue">₺9,850 today</span>
-                    </div>
-                    <div className="admin-perf-bar">
-                      <div className="admin-perf-bar-fill" style={{ width: '62%' }}></div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Item 3 */}
-                <div className="admin-perf-item">
-                  <div className="admin-perf-img">
-                    <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, #f87171, #dc2626)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <span className="material-symbols-outlined" style={{ color: 'white', fontSize: '2rem' }}>restaurant</span>
-                    </div>
-                  </div>
-                  <div className="admin-perf-info">
-                    <div className="admin-perf-row">
-                      <h5 className="admin-perf-name">Aged Ribeye Frites</h5>
-                      <span className="admin-perf-revenue">₺8,400 today</span>
-                    </div>
-                    <div className="admin-perf-bar">
-                      <div className="admin-perf-bar-fill" style={{ width: '48%' }}></div>
-                    </div>
-                  </div>
-                </div>
-              </div>
+          {isLoading ? (
+            <div className="kitchen-empty-state">
+              <div className="material-symbols-outlined kitchen-empty-icon">sync</div>
+              <p>Biletler yükleniyor...</p>
             </div>
-
-            {/* Kitchen Live Log */}
-            <div className="kitchen-span-4">
-              <div className="admin-log-card">
-                <h4 className="admin-log-title">Live Kitchen Log</h4>
-
-                <div className="admin-log-item">
-                  <div className="admin-log-dot admin-log-dot--primary"></div>
-                  <div>
-                    <p className="admin-log-time admin-log-time--primary">19:42 · ORDER #402</p>
-                    <p className="admin-log-text">Table 12: Entrées sent to station 3</p>
-                  </div>
-                </div>
-
-                <div className="admin-log-item">
-                  <div className="admin-log-dot admin-log-dot--neutral"></div>
-                  <div>
-                    <p className="admin-log-time admin-log-time--neutral">19:38 · STATUS</p>
-                    <p className="admin-log-text">Pastry Chef: Shift end. No replacement.</p>
-                  </div>
-                </div>
-
-                <div className="admin-log-item">
-                  <div className="admin-log-dot admin-log-dot--success"></div>
-                  <div>
-                    <p className="admin-log-time admin-log-time--success">19:35 · DELIVERY</p>
-                    <p className="admin-log-text">Stock arrived: Fresh sea bass (40kg)</p>
-                  </div>
-                </div>
-
-                <div className="admin-log-item">
-                  <div className="admin-log-dot admin-log-dot--primary"></div>
-                  <div>
-                    <p className="admin-log-time admin-log-time--primary">19:30 · ORDER #401</p>
-                    <p className="admin-log-text">VIP Table 4: All mains served</p>
-                  </div>
-                </div>
-
-                <button className="admin-log-btn">View All Logs</button>
-              </div>
+          ) : tickets.length === 0 ? (
+            <div className="kitchen-empty-state">
+              <div className="material-symbols-outlined kitchen-empty-icon">restaurant_menu</div>
+              <h3>Şu an bekleyen sipariş yok.</h3>
+              <p>Harika gidiyorsun şef! Yeni sipariş geldiğinde burada görünecektir.</p>
             </div>
-          </div>
+          ) : (
+            <div className="kitchen-ticket-grid">
+              {tickets.map((ticket) => {
+                const minutesAgo = Math.floor((new Date().getTime() - new Date(ticket.createdAt).getTime()) / 60000);
+                const isUrgent = minutesAgo > 15;
+                const isPrinting = printingTicketId === ticket.id;
+
+                return (
+                  <div key={ticket.id} className={`kitchen-ticket ${isUrgent ? 'kitchen-ticket--urgent' : ''} ${isPrinting ? 'kitchen-ticket-to-print' : ''}`}>
+                    <div className="kitchen-ticket-header">
+                      <div className="kitchen-ticket-table">MASA {ticket.tableNumber}</div>
+                      <div className="kitchen-ticket-time">{minutesAgo} dk önce</div>
+                    </div>
+                    
+                    <div className="kitchen-ticket-items">
+                      {ticket.items.map((item) => (
+                        <div key={item.id} className="kitchen-ticket-item">
+                          <span className="kitchen-ticket-qty">{item.quantity}</span>
+                          <div style={{ flex: 1 }}>
+                            <div className="kitchen-ticket-name">{item.name.toUpperCase()}</div>
+                            {item.notes && <div className="kitchen-ticket-notes">NOT: {item.notes}</div>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="kitchen-ticket-footer">
+                      <button 
+                        className="kitchen-ticket-btn kitchen-ticket-btn--print" 
+                        onClick={() => handlePrint(ticket.id)}
+                        title="Fiş Yazdır"
+                      >
+                        <span className="material-symbols-outlined">print</span>
+                      </button>
+                      <button 
+                        className="kitchen-ticket-btn"
+                        onClick={() => markTicketReady(ticket.id)}
+                      >
+                        <span className="material-symbols-outlined">check_circle</span>
+                        Hazır / Bitti
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </main>
       </div>
-
-      {/* ── Bottom Nav (Mobile) ── */}
-      <nav className="admin-bottom-nav">
-        <div className={`admin-bottom-nav-item ${mobileNavTab === 'menu' ? 'active' : ''}`} onClick={() => setMobileNavTab('menu')}>
-          <span className="material-symbols-outlined">restaurant_menu</span>
-          <span className="admin-bottom-nav-label">Menu</span>
-        </div>
-        <div className={`admin-bottom-nav-item ${mobileNavTab === 'orders' ? 'active' : ''}`} onClick={() => setMobileNavTab('orders')}>
-          <span className="material-symbols-outlined">receipt_long</span>
-          <span className="admin-bottom-nav-label">Orders</span>
-        </div>
-        <div className={`admin-bottom-nav-item ${mobileNavTab === 'tables' ? 'active' : ''}`} onClick={() => setMobileNavTab('tables')}>
-          <span className="material-symbols-outlined">table_restaurant</span>
-          <span className="admin-bottom-nav-label">Tables</span>
-        </div>
-        <div className={`admin-bottom-nav-item ${mobileNavTab === 'sales' ? 'active' : ''}`} onClick={() => setMobileNavTab('sales')}>
-          <span className="material-symbols-outlined">query_stats</span>
-          <span className="admin-bottom-nav-label">Sales</span>
-        </div>
-      </nav>
     </div>
   );
 }

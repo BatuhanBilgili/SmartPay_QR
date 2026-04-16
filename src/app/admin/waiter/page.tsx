@@ -24,6 +24,7 @@ interface MenuItem {
   name: string;
   description: string;
   price: string;
+  maxQuantity: number | null;
 }
 
 interface MenuCategory {
@@ -54,6 +55,7 @@ interface Order {
 interface TableDetail {
   table: { id: string; tableNumber: number; label: string; capacity: number };
   sessionId: string | null;
+  totalAmount: string;
   orders: Order[];
   menu: MenuCategory[];
 }
@@ -66,6 +68,12 @@ export default function WaiterPanelPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isModalLoading, setIsModalLoading] = useState(false);
   const [mobileNavTab, setMobileNavTab] = useState('tables');
+  
+  // ── Basket State ──
+  const [basket, setBasket] = useState<{ menuItemId: string; name: string; quantity: number; price: string; maxQuantity: number | null }[]>([]);
+  
+  // ── Confirmation Toast State ──
+  const [confirmAction, setConfirmAction] = useState<{ type: 'item' | 'order'; id: string; name: string } | null>(null);
 
   // ── Fetch all tables ──
   const fetchTables = useCallback(async () => {
@@ -114,6 +122,7 @@ export default function WaiterPanelPage() {
   const closeModal = () => {
     setIsModalOpen(false);
     setSelectedTable(null);
+    setBasket([]); // Sepeti temizle
     fetchTables(); // Listeyi yenile
   };
 
@@ -136,15 +145,32 @@ export default function WaiterPanelPage() {
   };
 
   // ── Delete order item ──
-  const deleteOrderItem = async (itemId: string) => {
+  const deleteOrderItem = (itemId: string, name: string) => {
+    setConfirmAction({ type: 'item', id: itemId, name });
+  };
+
+  // ── Cancel/Delete entire order ──
+  const cancelOrder = (orderId: string, time: string) => {
+    setConfirmAction({ type: 'order', id: orderId, name: `Sipariş (${time})` });
+  };
+
+  const handleConfirmAction = async () => {
+    if (!confirmAction) return;
     try {
-      await fetch(`/api/admin/orders/items/${itemId}`, { method: 'DELETE' });
+      const endpoint = confirmAction.type === 'item' 
+        ? `/api/admin/orders/items/${confirmAction.id}`
+        : `/api/admin/orders/${confirmAction.id}`;
+        
+      await fetch(endpoint, { method: 'DELETE' });
+      
       // Refresh modal data
       if (selectedTable) {
         const res = await fetch(`/api/admin/tables/${selectedTable.table.id}/orders`);
         const data = await res.json();
         if (data.success) setSelectedTable(data.data);
       }
+      fetchTables(); // Sync main screen
+      setConfirmAction(null);
     } catch (err) {
       console.error('Silme hatası:', err);
     }
@@ -203,8 +229,8 @@ export default function WaiterPanelPage() {
         </div>
         <div className="admin-topbar-right">
           <nav className="admin-topbar-nav">
-            <a className="active">Dashboard</a>
-            <a>Orders</a>
+            <a className="active">Live Orders</a>
+            <a>History</a>
             <a>Staff</a>
           </nav>
           <div className="admin-avatar" onClick={handleLogout} title="Çıkış Yap">👨‍🍳</div>
@@ -225,13 +251,13 @@ export default function WaiterPanelPage() {
           </div>
           <nav className="admin-sidebar-nav">
             <a className="admin-sidebar-item active">
-              <span className="material-symbols-outlined">dashboard</span>
-              Dashboard
-            </a>
-            <a className="admin-sidebar-item">
               <span className="material-symbols-outlined">pending_actions</span>
               Live Orders
               {pendingTables.length > 0 && <span className="admin-sidebar-badge">{pendingTables.length}</span>}
+            </a>
+            <a className="admin-sidebar-item">
+              <span className="material-symbols-outlined">history</span>
+              Order History
             </a>
             <a className="admin-sidebar-item">
               <span className="material-symbols-outlined">edit_note</span>
@@ -371,19 +397,25 @@ export default function WaiterPanelPage() {
             ) : selectedTable ? (
               <>
                 {/* Modal Header */}
-                <div className="table-modal-header">
-                  <div>
-                    <h2 className="table-modal-title">
-                      Masa {selectedTable.table.tableNumber}
-                      <span style={{ fontWeight: 400, fontSize: '1rem', color: 'var(--on-surface-variant)', marginLeft: 12 }}>
-                        {selectedTable.table.label}
-                      </span>
-                    </h2>
+                  <div className="table-modal-header">
+                    <div>
+                      <h2 className="table-modal-title">
+                        Masa {selectedTable.table.tableNumber}
+                        <span style={{ fontWeight: 400, fontSize: '1rem', color: 'var(--on-surface-variant)', marginLeft: 12 }}>
+                          {selectedTable.table.label}
+                        </span>
+                      </h2>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                      <div className="table-modal-bill-total">
+                        <span>Masa Toplamı</span>
+                        ₺{parseFloat(selectedTable.totalAmount).toFixed(2)}
+                      </div>
+                      <button className="table-modal-close" onClick={closeModal}>
+                        <span className="material-symbols-outlined">close</span>
+                      </button>
+                    </div>
                   </div>
-                  <button className="table-modal-close" onClick={closeModal}>
-                    <span className="material-symbols-outlined">close</span>
-                  </button>
-                </div>
 
                 {/* Modal Body */}
                 <div className="table-modal-body">
@@ -396,38 +428,136 @@ export default function WaiterPanelPage() {
                           <span>{cat.iconEmoji}</span>
                           <span>{cat.name}</span>
                         </div>
-                        {cat.items.map((item) => (
-                          <div key={item.id} className="modal-menu-item">
-                            <div style={{ flex: 1 }}>
-                              <span className="modal-menu-item-name">{item.name}</span>
+                        {cat.items.map((item) => {
+                          const basketItem = basket.find(b => b.menuItemId === item.id);
+                          const basketQty = basketItem?.quantity || 0;
+                          
+                          // Hesaplanan toplam adet (mevcut aktif siparişler + sebetteki)
+                          const currentTotalInOrders = selectedTable.orders
+                            .filter(o => o.status !== 'cancelled')
+                            .flatMap(o => o.items)
+                            .filter(i => i.menuItemId === item.id)
+                            .reduce((sum, i) => sum + i.quantity, 0);
+                          
+                          const totalRequested = currentTotalInOrders + basketQty;
+                          const isMaxReached = item.maxQuantity !== null && item.maxQuantity > 0 && totalRequested >= item.maxQuantity;
+
+                          return (
+                            <div key={item.id} className={`modal-menu-item ${isMaxReached ? 'modal-menu-item--disabled' : ''}`}>
+                              <div style={{ flex: 1 }}>
+                                <span className="modal-menu-item-name">{item.name}</span>
+                                {item.maxQuantity && (
+                                  <div style={{ fontSize: '0.65rem', color: isMaxReached ? 'var(--error)' : 'var(--on-surface-variant)' }}>
+                                    Limit: {item.maxQuantity} (Şu an: {totalRequested})
+                                  </div>
+                                )}
+                              </div>
+                              <span className="modal-menu-item-price">₺{parseFloat(item.price).toFixed(2)}</span>
+                              <div className="modal-menu-item-actions">
+                                {basketQty > 0 && (
+                                  <button
+                                    className="modal-menu-item-btn"
+                                    onClick={() => {
+                                      const newBasket = basket.map(b => 
+                                        b.menuItemId === item.id ? { ...b, quantity: b.quantity - 1 } : b
+                                      ).filter(b => b.quantity > 0);
+                                      setBasket(newBasket);
+                                    }}
+                                  >
+                                    -
+                                  </button>
+                                )}
+                                {basketQty > 0 && <span style={{ margin: '0 8px', fontWeight: 700 }}>{basketQty}</span>}
+                                <button
+                                  className="modal-menu-item-add"
+                                  disabled={isMaxReached}
+                                  onClick={() => {
+                                    if (isMaxReached) {
+                                      alert(`Maksimum sipariş limitine ulaşıldı (${item.maxQuantity} adet).`);
+                                      return;
+                                    }
+                                    const existing = basket.find(b => b.menuItemId === item.id);
+                                    if (existing) {
+                                      setBasket(basket.map(b => b.menuItemId === item.id ? { ...b, quantity: b.quantity + 1 } : b));
+                                    } else {
+                                      setBasket([...basket, { menuItemId: item.id, name: item.name, quantity: 1, price: item.price, maxQuantity: item.maxQuantity }]);
+                                    }
+                                  }}
+                                  title="Sepete Ekle"
+                                >
+                                  +
+                                </button>
+                              </div>
                             </div>
-                            <span className="modal-menu-item-price">₺{parseFloat(item.price).toFixed(2)}</span>
-                            <button
-                              className="modal-menu-item-add"
-                              onClick={() => addItemToTable(item.id)}
-                              title="Siparişe Ekle"
-                            >
-                              +
-                            </button>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     ))}
                   </div>
 
-                  {/* Right: Orders */}
+                  {/* Right: Orders & Basket */}
                   <div className="table-modal-orders">
-                    <p className="modal-orders-title">Sipariş Detayı</p>
+                    {/* ── NEW: Current Basket ── */}
+                    {basket.length > 0 && (
+                      <div className="modal-order-group modal-order-group--basket">
+                        <div className="modal-order-group-header">
+                          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--primary)' }}>YENİ SİPARİŞ (SEPET)</span>
+                        </div>
+                        {basket.map((item) => (
+                          <div key={item.menuItemId} className="modal-order-item">
+                            <div className="modal-order-item-left">
+                              <span className="modal-order-item-qty">{item.quantity}x</span>
+                              <span className="modal-order-item-name">{item.name}</span>
+                            </div>
+                            <span className="modal-order-item-price">₺{(parseFloat(item.price) * item.quantity).toFixed(2)}</span>
+                          </div>
+                        ))}
+                        <div className="modal-order-total">
+                          <span className="modal-order-total-label">Basket Toplam</span>
+                          <span className="modal-order-total-value">₺{basket.reduce((sum, i) => sum + (parseFloat(i.price) * i.quantity), 0).toFixed(2)}</span>
+                        </div>
+                        <div className="modal-order-actions">
+                          <button
+                            className="modal-order-action-btn modal-order-action-btn--kitchen"
+                            onClick={async () => {
+                              if (!selectedTable) return;
+                              try {
+                                await fetch(`/api/admin/tables/${selectedTable.table.id}/orders`, {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ items: basket.map(b => ({ menuItemId: b.menuItemId, quantity: b.quantity })) }),
+                                });
+                                setBasket([]);
+                                // Yenile
+                                const res = await fetch(`/api/admin/tables/${selectedTable.table.id}/orders`);
+                                const data = await res.json();
+                                if (data.success) setSelectedTable(data.data);
+                                fetchTables(); // Sync main screen
+                              } catch (err) {
+                                console.error('Sipariş gönderim hatası:', err);
+                              }
+                            }}
+                          >
+                            ✅ Onayla
+                          </button>
+                          <button className="modal-order-action-btn modal-order-action-btn--cancel" onClick={() => setBasket([])}>Vazgeç</button>
+                        </div>
+                      </div>
+                    )}
 
-                    {selectedTable.orders.length === 0 ? (
+                    <p className="modal-orders-title">Onaylı Siparişler</p>
+
+                    {selectedTable.orders.filter(o => o.status !== 'cancelled').length === 0 ? (
                       <div className="modal-empty-state">
                         <span className="material-symbols-outlined">receipt_long</span>
-                        Bu masada henüz sipariş yok.
+                        Bu masada henüz onaylı sipariş yok.
                         <br />
                         Soldan menü ürünlerini ekleyebilirsiniz.
                       </div>
                     ) : (
-                      selectedTable.orders.map((order) => (
+                      selectedTable.orders
+                        .filter(o => o.status !== 'cancelled')
+                        .map((order) => (
                         <div key={order.id} className="modal-order-group">
                           <div className="modal-order-group-header">
                             <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--on-surface-variant)' }}>
@@ -448,7 +578,7 @@ export default function WaiterPanelPage() {
                               {order.status === 'pending' && (
                                 <button
                                   className="modal-order-item-delete"
-                                  onClick={() => deleteOrderItem(item.id)}
+                                  onClick={() => deleteOrderItem(item.id, item.name)}
                                   title="Sil"
                                 >
                                   <span className="material-symbols-outlined" style={{ fontSize: '0.875rem' }}>close</span>
@@ -483,7 +613,7 @@ export default function WaiterPanelPage() {
                             {order.status === 'pending' && (
                               <button
                                 className="modal-order-action-btn modal-order-action-btn--cancel"
-                                onClick={() => updateOrderStatus(order.id, 'cancelled')}
+                                onClick={() => cancelOrder(order.id, new Date(order.createdAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }))}
                               >
                                 İptal
                               </button>
@@ -496,6 +626,24 @@ export default function WaiterPanelPage() {
                 </div>
               </>
             ) : null}
+          </div>
+        </div>
+      )}
+      {/* ── Custom Action Confirmation Toast ── */}
+      {confirmAction && (
+        <div className="admin-toast-overlay">
+          <div className="admin-toast">
+            <span className="material-symbols-outlined" style={{ color: 'var(--primary)', fontSize: '2rem' }}>delete_forever</span>
+            <div className="admin-toast-message">
+              <div>{confirmAction.type === 'item' ? `"${confirmAction.name}" silinsin mi?` : `${confirmAction.name} iptal edilsin mi?`}</div>
+              <div style={{ fontSize: '0.75rem', fontWeight: 400, opacity: 0.8 }}>Kayıt DB'den silinecek ve ücret düşecektir.</div>
+            </div>
+            <div className="admin-toast-actions">
+              <button className="admin-toast-btn admin-toast-btn--cancel" onClick={() => setConfirmAction(null)}>Vazgeç</button>
+              <button className="admin-toast-btn admin-toast-btn--confirm" onClick={handleConfirmAction}>
+                {confirmAction.type === 'item' ? 'Sil' : 'Siparişi İptal Et'}
+              </button>
+            </div>
           </div>
         </div>
       )}

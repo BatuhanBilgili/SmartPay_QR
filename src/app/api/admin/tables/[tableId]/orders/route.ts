@@ -83,6 +83,7 @@ export async function GET(
           capacity: table.capacity,
         },
         sessionId: activeSession?.id || null,
+        totalAmount: activeSession?.totalAmount || '0.00',
         orders: mappedOrders,
         menu: menuCategories.map((cat: any) => ({
           id: cat.id,

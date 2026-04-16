@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { orders } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
+import { orders, tableSessions } from '@/lib/db/schema';
+import { eq, and, ne } from 'drizzle-orm';
 
 /**
  * PATCH /api/admin/orders/[orderId]/status
@@ -37,6 +37,29 @@ export async function PATCH(
         { status: 404 }
       );
     }
+
+    // Eğer iptal edildiyse veya başka bir durum değişikliği olduysa session total'i güncelle
+    const allSessionOrders = await db.query.orders.findMany({
+      where: and(
+        eq(orders.sessionId, updated.sessionId),
+        ne(orders.status, 'cancelled')
+      ),
+    });
+
+    console.log(`[Status Update] Order: ${orderId}, Session: ${updated.sessionId}, New Status: ${status}`);
+    console.log(`[Status Update] Non-cancelled orders found: ${allSessionOrders.length}`);
+
+    const sessionTotal = allSessionOrders.reduce((sum: number, o: any) => {
+      const val = parseFloat(o.totalAmount || '0');
+      console.log(`[Status Update] Adding order ${o.id}: ${val}`);
+      return sum + val;
+    }, 0);
+
+    console.log(`[Status Update] Resulting Session Total: ${sessionTotal.toFixed(2)}`);
+
+    await db.update(tableSessions)
+      .set({ totalAmount: sessionTotal.toFixed(2) })
+      .where(eq(tableSessions.id, updated.sessionId));
 
     return NextResponse.json({ success: true, data: updated });
   } catch (error) {
