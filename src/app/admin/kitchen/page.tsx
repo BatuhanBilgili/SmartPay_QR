@@ -69,7 +69,7 @@ export default function KitchenPanelPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'preparing' }),
       });
-      
+
       await fetch(`/api/admin/orders/${orderId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -90,25 +90,37 @@ export default function KitchenPanelPage() {
 
   return (
     <div className="admin-body">
-      <header className="admin-topbar">
-        <div className="admin-topbar-left">
-          <span className="admin-menu-btn material-symbols-outlined">menu</span>
-          <span className="admin-topbar-brand">KITCHEN DISPLAY SYSTEM.</span>
-        </div>
-        <div className="admin-topbar-right">
-          <div className="admin-status-pill" style={{ marginRight: 16 }}>
-            <div className="admin-status-dot"></div>
-            <span className="admin-status-text">Live Production</span>
-          </div>
-          <div className="admin-avatar" onClick={handleLogout} title="Çıkış Yap">👨‍🍳</div>
-        </div>
-      </header>
-
-      <div className="admin-layout">
+      <div className="admin-layout" style={{ paddingTop: 0 }}>
         <main className="admin-main">
-          <div className="admin-page-header" style={{ marginBottom: 32 }}>
-            <h1 className="admin-page-title">Mutfak</h1>
-            <p className="admin-page-subtitle">Hazırlanması gereken {tickets.length} aktif sipariş bulunuyor.</p>
+          <div className="admin-page-header">
+            <div className="admin-header-main">
+              <h1 className="admin-page-title">Mutfak Sistem Ekranı</h1>
+              <button 
+                onClick={handleLogout}
+                style={{ 
+                  background: 'var(--surface-container-highest)', 
+                  border: 'none', 
+                  borderRadius: 'var(--admin-radius-full)', 
+                  padding: '8px 16px',
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  color: 'var(--on-surface-variant)'
+                }}
+              >
+                Çıkış Yap
+              </button>
+            </div>
+            
+            <div className="admin-header-status">
+              <div className="admin-status-pill">
+                <div className="admin-status-dot"></div>
+                <span className="admin-status-text">Aktif Siparişler</span>
+              </div>
+              <p className="admin-page-subtitle">
+                Hazırlanması gereken <span className="highlight">{tickets.length}</span> aktif sipariş bulunuyor.
+              </p>
+            </div>
           </div>
 
           <button className="admin-fab" onClick={fetchTickets} title="Yenile">
@@ -139,7 +151,7 @@ export default function KitchenPanelPage() {
                       <div className="kitchen-ticket-table">MASA {ticket.tableNumber}</div>
                       <div className="kitchen-ticket-time">{minutesAgo} dk önce</div>
                     </div>
-                    
+
                     <div className="kitchen-ticket-items">
                       {ticket.items.map((item) => (
                         <div key={item.id} className="kitchen-ticket-item">
@@ -153,14 +165,14 @@ export default function KitchenPanelPage() {
                     </div>
 
                     <div className="kitchen-ticket-footer">
-                      <button 
-                        className="kitchen-ticket-btn kitchen-ticket-btn--print" 
+                      <button
+                        className="kitchen-ticket-btn kitchen-ticket-btn--print"
                         onClick={() => handlePrint(ticket.id)}
                         title="Fiş Yazdır"
                       >
                         <span className="material-symbols-outlined">print</span>
                       </button>
-                      <button 
+                      <button
                         className="kitchen-ticket-btn"
                         onClick={() => markTicketReady(ticket.id)}
                       >

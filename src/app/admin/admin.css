@@ -389,14 +389,31 @@
 .admin-page-header {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
   margin-bottom: 40px;
+}
+
+.admin-header-main {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.admin-header-status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
 }
 
 @media (min-width: 768px) {
   .admin-page-header {
     flex-direction: row;
     justify-content: space-between;
+    align-items: center;
+  }
+  
+  .admin-header-status {
     align-items: flex-end;
   }
 }

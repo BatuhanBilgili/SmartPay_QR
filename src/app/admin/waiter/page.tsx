@@ -68,10 +68,10 @@ export default function WaiterPanelPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isModalLoading, setIsModalLoading] = useState(false);
   const [mobileNavTab, setMobileNavTab] = useState('tables');
-  
+
   // ── Basket State ──
   const [basket, setBasket] = useState<{ menuItemId: string; name: string; quantity: number; price: string; maxQuantity: number | null }[]>([]);
-  
+
   // ── Confirmation Toast State ──
   const [confirmAction, setConfirmAction] = useState<{ type: 'item' | 'order'; id: string; name: string } | null>(null);
 
@@ -157,12 +157,12 @@ export default function WaiterPanelPage() {
   const handleConfirmAction = async () => {
     if (!confirmAction) return;
     try {
-      const endpoint = confirmAction.type === 'item' 
+      const endpoint = confirmAction.type === 'item'
         ? `/api/admin/orders/items/${confirmAction.id}`
         : `/api/admin/orders/${confirmAction.id}`;
-        
+
       await fetch(endpoint, { method: 'DELETE' });
-      
+
       // Refresh modal data
       if (selectedTable) {
         const res = await fetch(`/api/admin/tables/${selectedTable.table.id}/orders`);
@@ -221,72 +221,37 @@ export default function WaiterPanelPage() {
 
   return (
     <div className="admin-body">
-      {/* ── Top App Bar ── */}
-      <header className="admin-topbar">
-        <div className="admin-topbar-left">
-          <span className="admin-menu-btn material-symbols-outlined">menu</span>
-          <span className="admin-topbar-brand">The Culinary Editorial</span>
-        </div>
-        <div className="admin-topbar-right">
-          <nav className="admin-topbar-nav">
-            <a className="active">Live Orders</a>
-            <a>History</a>
-            <a>Staff</a>
-          </nav>
-          <div className="admin-avatar" onClick={handleLogout} title="Çıkış Yap">👨‍🍳</div>
-        </div>
-      </header>
-
-      <div className="admin-layout">
-        {/* ── Sidebar (Desktop) ── */}
-        <aside className="admin-sidebar">
-          <div className="admin-sidebar-profile">
-            <div className="admin-sidebar-profile-icon">
-              <span className="material-symbols-outlined">restaurant</span>
-            </div>
-            <div className="admin-sidebar-profile-info">
-              <p>Editorial Manager</p>
-              <p>Shift: Evening</p>
-            </div>
-          </div>
-          <nav className="admin-sidebar-nav">
-            <a className="admin-sidebar-item active">
-              <span className="material-symbols-outlined">pending_actions</span>
-              Live Orders
-              {pendingTables.length > 0 && <span className="admin-sidebar-badge">{pendingTables.length}</span>}
-            </a>
-            <a className="admin-sidebar-item">
-              <span className="material-symbols-outlined">history</span>
-              Order History
-            </a>
-            <a className="admin-sidebar-item">
-              <span className="material-symbols-outlined">edit_note</span>
-              Menu Editor
-            </a>
-            <a className="admin-sidebar-item">
-              <span className="material-symbols-outlined">badge</span>
-              Staff Management
-            </a>
-            <a className="admin-sidebar-item">
-              <span className="material-symbols-outlined">settings</span>
-              Settings
-            </a>
-          </nav>
-        </aside>
-
+      <div className="admin-layout" style={{ paddingTop: 0 }}>
         {/* ── Main Content ── */}
         <main className="admin-main">
           {/* Header */}
           <div className="admin-page-header">
             <div>
-              <h1 className="admin-page-title">Service Floor</h1>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <h1 className="admin-page-title">Servis</h1>
+                <button
+                  onClick={handleLogout}
+                  style={{
+                    background: 'var(--surface-container-highest)',
+                    border: 'none',
+                    borderRadius: 'var(--admin-radius-full)',
+                    padding: '8px 16px',
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    color: 'var(--on-surface-variant)'
+                  }}
+                >
+                  Çıkış Yap
+                </button>
+              </div>
               <p className="admin-page-subtitle">
                 {dayStr}, {timeStr} — <span className="highlight">{pendingTables.length > 0 ? 'Aktif Siparişler Var' : 'Sakin'}</span>
               </p>
             </div>
             <div className="admin-status-pill">
               <div className="admin-status-dot"></div>
-              <span className="admin-status-text">System Online</span>
+              <span className="admin-status-text">Sistem Aktif</span>
             </div>
           </div>
 
@@ -359,25 +324,7 @@ export default function WaiterPanelPage() {
         </main>
       </div>
 
-      {/* ── Bottom Nav (Mobile) ── */}
-      <nav className="admin-bottom-nav">
-        <div className={`admin-bottom-nav-item ${mobileNavTab === 'menu' ? 'active' : ''}`} onClick={() => setMobileNavTab('menu')}>
-          <span className="material-symbols-outlined">restaurant_menu</span>
-          <span className="admin-bottom-nav-label">Menu</span>
-        </div>
-        <div className={`admin-bottom-nav-item ${mobileNavTab === 'orders' ? 'active' : ''}`} onClick={() => setMobileNavTab('orders')}>
-          <span className="material-symbols-outlined">receipt_long</span>
-          <span className="admin-bottom-nav-label">Orders</span>
-        </div>
-        <div className={`admin-bottom-nav-item ${mobileNavTab === 'tables' ? 'active' : ''}`} onClick={() => setMobileNavTab('tables')}>
-          <span className="material-symbols-outlined">table_restaurant</span>
-          <span className="admin-bottom-nav-label">Tables</span>
-        </div>
-        <div className={`admin-bottom-nav-item ${mobileNavTab === 'sales' ? 'active' : ''}`} onClick={() => setMobileNavTab('sales')}>
-          <span className="material-symbols-outlined">query_stats</span>
-          <span className="admin-bottom-nav-label">Sales</span>
-        </div>
-      </nav>
+      {/* ── Bottom Nav Removed ── */}
 
       {/* ── FAB ── */}
       <button className="admin-fab" onClick={() => fetchTables()}>
@@ -397,25 +344,25 @@ export default function WaiterPanelPage() {
             ) : selectedTable ? (
               <>
                 {/* Modal Header */}
-                  <div className="table-modal-header">
-                    <div>
-                      <h2 className="table-modal-title">
-                        Masa {selectedTable.table.tableNumber}
-                        <span style={{ fontWeight: 400, fontSize: '1rem', color: 'var(--on-surface-variant)', marginLeft: 12 }}>
-                          {selectedTable.table.label}
-                        </span>
-                      </h2>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                      <div className="table-modal-bill-total">
-                        <span>Masa Toplamı</span>
-                        ₺{parseFloat(selectedTable.totalAmount).toFixed(2)}
-                      </div>
-                      <button className="table-modal-close" onClick={closeModal}>
-                        <span className="material-symbols-outlined">close</span>
-                      </button>
-                    </div>
+                <div className="table-modal-header">
+                  <div>
+                    <h2 className="table-modal-title">
+                      Masa {selectedTable.table.tableNumber}
+                      <span style={{ fontWeight: 400, fontSize: '1rem', color: 'var(--on-surface-variant)', marginLeft: 12 }}>
+                        {selectedTable.table.label}
+                      </span>
+                    </h2>
                   </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                    <div className="table-modal-bill-total">
+                      <span>Masa Toplamı</span>
+                      ₺{parseFloat(selectedTable.totalAmount).toFixed(2)}
+                    </div>
+                    <button className="table-modal-close" onClick={closeModal}>
+                      <span className="material-symbols-outlined">close</span>
+                    </button>
+                  </div>
+                </div>
 
                 {/* Modal Body */}
                 <div className="table-modal-body">
@@ -431,14 +378,14 @@ export default function WaiterPanelPage() {
                         {cat.items.map((item) => {
                           const basketItem = basket.find(b => b.menuItemId === item.id);
                           const basketQty = basketItem?.quantity || 0;
-                          
+
                           // Hesaplanan toplam adet (mevcut aktif siparişler + sebetteki)
                           const currentTotalInOrders = selectedTable.orders
                             .filter(o => o.status !== 'cancelled')
                             .flatMap(o => o.items)
                             .filter(i => i.menuItemId === item.id)
                             .reduce((sum, i) => sum + i.quantity, 0);
-                          
+
                           const totalRequested = currentTotalInOrders + basketQty;
                           const isMaxReached = item.maxQuantity !== null && item.maxQuantity > 0 && totalRequested >= item.maxQuantity;
 
@@ -458,7 +405,7 @@ export default function WaiterPanelPage() {
                                   <button
                                     className="modal-menu-item-btn"
                                     onClick={() => {
-                                      const newBasket = basket.map(b => 
+                                      const newBasket = basket.map(b =>
                                         b.menuItemId === item.id ? { ...b, quantity: b.quantity - 1 } : b
                                       ).filter(b => b.quantity > 0);
                                       setBasket(newBasket);
@@ -558,69 +505,69 @@ export default function WaiterPanelPage() {
                       selectedTable.orders
                         .filter(o => o.status !== 'cancelled')
                         .map((order) => (
-                        <div key={order.id} className="modal-order-group">
-                          <div className="modal-order-group-header">
-                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--on-surface-variant)' }}>
-                              {new Date(order.createdAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
-                            </span>
-                            <span className={`modal-order-status modal-order-status--${order.status}`}>
-                              {statusLabel(order.status)}
-                            </span>
-                          </div>
+                          <div key={order.id} className="modal-order-group">
+                            <div className="modal-order-group-header">
+                              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--on-surface-variant)' }}>
+                                {new Date(order.createdAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                              <span className={`modal-order-status modal-order-status--${order.status}`}>
+                                {statusLabel(order.status)}
+                              </span>
+                            </div>
 
-                          {order.items.map((item) => (
-                            <div key={item.id} className="modal-order-item">
-                              <div className="modal-order-item-left">
-                                <span className="modal-order-item-qty">{item.quantity}x</span>
-                                <span className="modal-order-item-name">{item.name}</span>
+                            {order.items.map((item) => (
+                              <div key={item.id} className="modal-order-item">
+                                <div className="modal-order-item-left">
+                                  <span className="modal-order-item-qty">{item.quantity}x</span>
+                                  <span className="modal-order-item-name">{item.name}</span>
+                                </div>
+                                <span className="modal-order-item-price">₺{parseFloat(item.totalPrice).toFixed(2)}</span>
+                                {order.status === 'pending' && (
+                                  <button
+                                    className="modal-order-item-delete"
+                                    onClick={() => deleteOrderItem(item.id, item.name)}
+                                    title="Sil"
+                                  >
+                                    <span className="material-symbols-outlined" style={{ fontSize: '0.875rem' }}>close</span>
+                                  </button>
+                                )}
                               </div>
-                              <span className="modal-order-item-price">₺{parseFloat(item.totalPrice).toFixed(2)}</span>
+                            ))}
+
+                            <div className="modal-order-total">
+                              <span className="modal-order-total-label">Toplam</span>
+                              <span className="modal-order-total-value">₺{parseFloat(order.totalAmount).toFixed(2)}</span>
+                            </div>
+
+                            {/* Action Buttons */}
+                            <div className="modal-order-actions">
                               {order.status === 'pending' && (
                                 <button
-                                  className="modal-order-item-delete"
-                                  onClick={() => deleteOrderItem(item.id, item.name)}
-                                  title="Sil"
+                                  className="modal-order-action-btn modal-order-action-btn--kitchen"
+                                  onClick={() => updateOrderStatus(order.id, 'confirmed')}
                                 >
-                                  <span className="material-symbols-outlined" style={{ fontSize: '0.875rem' }}>close</span>
+                                  🍳 Mutfağa Gönder
+                                </button>
+                              )}
+                              {(order.status === 'confirmed' || order.status === 'preparing') && (
+                                <button
+                                  className="modal-order-action-btn modal-order-action-btn--served"
+                                  onClick={() => updateOrderStatus(order.id, 'served')}
+                                >
+                                  ✅ Servis Edildi
+                                </button>
+                              )}
+                              {order.status === 'pending' && (
+                                <button
+                                  className="modal-order-action-btn modal-order-action-btn--cancel"
+                                  onClick={() => cancelOrder(order.id, new Date(order.createdAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }))}
+                                >
+                                  İptal
                                 </button>
                               )}
                             </div>
-                          ))}
-
-                          <div className="modal-order-total">
-                            <span className="modal-order-total-label">Toplam</span>
-                            <span className="modal-order-total-value">₺{parseFloat(order.totalAmount).toFixed(2)}</span>
                           </div>
-
-                          {/* Action Buttons */}
-                          <div className="modal-order-actions">
-                            {order.status === 'pending' && (
-                              <button
-                                className="modal-order-action-btn modal-order-action-btn--kitchen"
-                                onClick={() => updateOrderStatus(order.id, 'confirmed')}
-                              >
-                                🍳 Mutfağa Gönder
-                              </button>
-                            )}
-                            {(order.status === 'confirmed' || order.status === 'preparing') && (
-                              <button
-                                className="modal-order-action-btn modal-order-action-btn--served"
-                                onClick={() => updateOrderStatus(order.id, 'served')}
-                              >
-                                ✅ Servis Edildi
-                              </button>
-                            )}
-                            {order.status === 'pending' && (
-                              <button
-                                className="modal-order-action-btn modal-order-action-btn--cancel"
-                                onClick={() => cancelOrder(order.id, new Date(order.createdAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }))}
-                              >
-                                İptal
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      ))
+                        ))
                     )}
                   </div>
                 </div>

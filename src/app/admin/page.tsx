@@ -20,6 +20,7 @@ export default function AdminLoginPage() {
     const users: Record<string, { password: string; role: string }> = {
       garson: { password: 'garson123', role: 'waiter' },
       mutfak: { password: 'mutfak123', role: 'kitchen' },
+      admin:  { password: 'admin123',  role: 'owner' },
     };
 
     await new Promise((r) => setTimeout(r, 600)); // Simülasyon
@@ -29,7 +30,8 @@ export default function AdminLoginPage() {
       // Cookie/localStorage ile oturum simülasyonu
       localStorage.setItem('admin_role', user.role);
       localStorage.setItem('admin_user', username);
-      router.push(`/admin/${user.role}`);
+      const roleRoute = user.role === 'owner' ? 'dashboard' : user.role;
+      router.push(`/admin/${roleRoute}`);
     } else {
       setError('Kullanıcı adı veya şifre hatalı.');
     }
