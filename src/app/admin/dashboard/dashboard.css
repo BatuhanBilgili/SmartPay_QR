@@ -507,3 +507,23 @@
 
   .zr-footer   { margin-top: 24px; text-align: center; font-size: 9px; color: #555; border-top: 1px dashed #999; padding-top: 12px; }
 }
+
+/* ════════════════════════════════════════
+   BENTO GRID (Settings, vb.)
+   ════════════════════════════════════════ */
+.bento-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+}
+@media (min-width: 1024px) {
+  .bento-grid {
+    grid-template-columns: repeat(12, 1fr);
+  }
+  .bento-span-7 {
+    grid-column: span 7;
+  }
+  .bento-span-5 {
+    grid-column: span 5;
+  }
+}

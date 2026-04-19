@@ -71,6 +71,13 @@ export const paymentMethodEnum = pgEnum('payment_method', [
   'split_custom',
 ]);
 
+export const userRoleEnum = pgEnum('user_role', [
+  'owner',
+  'admin',
+  'waiter',
+  'kitchen',
+]);
+
 // ============================================================================
 // TABLES
 // ============================================================================
@@ -90,6 +97,23 @@ export const restaurants = pgTable('restaurants', {
   currency: varchar('currency', { length: 3 }).notNull().default('TRY'),
   settings: jsonb('settings').default({}),
   isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * Kullanıcılar — Restoran personeli (Garson, Mutfak, Admin vs.)
+ */
+export const users = pgTable('users', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  restaurantId: uuid('restaurant_id')
+    .notNull()
+    .references(() => restaurants.id, { onDelete: 'cascade' }),
+  username: varchar('username', { length: 50 }).notNull().unique(),
+  passwordHash: text('password_hash').notNull(),
+  role: userRoleEnum('role').notNull().default('waiter'),
+  isActive: boolean('is_active').notNull().default(true),
+  name: varchar('name', { length: 100 }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -124,6 +148,8 @@ export const menuItems = pgTable('menu_items', {
   imageUrl: text('image_url'),
   isAvailable: boolean('is_available').notNull().default(true),
   maxQuantity: integer('max_quantity'), // Bir oturumda maksimum kaç adet sipariş edilebilir
+  preparationTime: integer('preparation_time'),
+  allergens: text('allergens'),
   sortOrder: integer('sort_order').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -267,6 +293,14 @@ export const payments = pgTable('payments', {
 export const restaurantsRelations = relations(restaurants, ({ many }) => ({
   categories: many(categories),
   tables: many(tables),
+  users: many(users),
+}));
+
+export const usersRelations = relations(users, ({ one }) => ({
+  restaurant: one(restaurants, {
+    fields: [users.restaurantId],
+    references: [restaurants.id],
+  }),
 }));
 
 export const categoriesRelations = relations(categories, ({ one, many }) => ({

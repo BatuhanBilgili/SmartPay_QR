@@ -81,7 +81,7 @@ export default function WaiterPanelPage() {
       const res = await fetch('/api/admin/tables');
       const data = await res.json();
       if (data.success) {
-        setTables(data.data);
+        setTables(data.data.tables);
       }
     } catch (err) {
       console.error('Masa yükleme hatası:', err);

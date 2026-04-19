@@ -1,75 +1,108 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { tables, tableSessions, orders, orderItems } from '@/lib/db/schema';
-import { eq, and, inArray } from 'drizzle-orm';
+import { tables, restaurants } from '@/lib/db/schema';
+import { eq } from 'drizzle-orm';
 
-/**
- * GET /api/admin/tables
- * Restoranın tüm masalarını, aktif session ve bekleyen sipariş bilgileriyle döndürür.
- */
+async function getRestaurantId() {
+  const allRest = await db.select({ id: restaurants.id }).from(restaurants).limit(1);
+  return allRest[0]?.id;
+}
+
 export async function GET() {
   try {
-    // Tüm masaları getir
-    const allTables = await db.query.tables.findMany({
-      orderBy: (tables, { asc }) => [asc(tables.tableNumber)],
-      with: {
-        sessions: {
-          where: eq(tableSessions.status, 'active'),
-          limit: 1,
-          with: {
-            orders: {
-              with: {
-                items: true,
-              },
-            },
-          },
-        },
-      },
-    });
+    const rawTables = await db.select().from(tables).orderBy(tables.tableNumber);
+    const restId = await getRestaurantId();
+    let restaurant = null;
+    
+    if (restId) {
+       const [r] = await db.select().from(restaurants).where(eq(restaurants.id, restId));
+       restaurant = r;
+    }
 
-    // Her masa için durum bilgisi hesapla
-    const mappedTables = allTables.map((table: any) => {
-      const activeSession = table.sessions?.[0] || null;
-      const allOrders = activeSession?.orders || [];
+    return NextResponse.json({ 
+      success: true, 
+      data: {
+        tables: rawTables,
+        restaurant,
+      } 
+    });
+  } catch (error: any) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const restId = await getRestaurantId();
+    if (!restId) throw new Error('Restoran bulunamadı.');
+
+    const body = await request.json();
+    const { action, tableNumber, label, name, address } = body;
+
+    if (action === 'table') {
+      const [newTable] = await db.insert(tables).values({
+        restaurantId: restId,
+        tableNumber: parseInt(tableNumber, 10),
+        label: label || null,
+        capacity: 4,
+        status: 'available',
+      }).returning();
+      return NextResponse.json({ success: true, table: newTable });
+    }
+
+    return NextResponse.json({ success: false, error: 'Bilinmeyen işlem.' }, { status: 400 });
+
+  } catch (error: any) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const body = await request.json();
+    const { action, id, tableNumber, label, name, address } = body;
+
+    if (action === 'table') {
+      if (!id) return NextResponse.json({ success: false, error: 'Masa ID gerekli.' }, { status: 400 });
+      const updates: any = {};
+      if (tableNumber !== undefined) updates.tableNumber = parseInt(tableNumber, 10);
+      if (label !== undefined) updates.label = label;
+
+      const [updated] = await db.update(tables).set(updates).where(eq(tables.id, id)).returning();
+      return NextResponse.json({ success: true, table: updated });
+    }
+
+    if (action === 'restaurant') {
+      const restId = await getRestaurantId();
+      if (!restId) return NextResponse.json({ success: false, error: 'Restoran bulunamadı.' }, { status: 400 });
       
-      const pendingOrders = allOrders.filter((o: any) => o.status === 'pending');
-      const confirmedOrders = allOrders.filter((o: any) => 
-        o.status === 'confirmed' || o.status === 'preparing'
-      );
-      const servedOrders = allOrders.filter((o: any) => o.status === 'served');
+      const updates: any = { updatedAt: new Date() };
+      if (name !== undefined) updates.name = name;
+      if (address !== undefined) updates.address = address;
 
-      let tableStatus: 'empty' | 'pending' | 'confirmed' | 'served' = 'empty';
-      if (pendingOrders.length > 0) tableStatus = 'pending';
-      else if (confirmedOrders.length > 0) tableStatus = 'confirmed';
-      else if (servedOrders.length > 0) tableStatus = 'served';
+      const [updated] = await db.update(restaurants).set(updates).where(eq(restaurants.id, restId)).returning();
+      return NextResponse.json({ success: true, restaurant: updated });
+    }
 
-      const totalAmount = allOrders
-        .filter((o: any) => o.status !== 'cancelled')
-        .reduce((sum: number, o: any) => 
-          sum + parseFloat(o.totalAmount || '0'), 0
-        );
+    return NextResponse.json({ success: false, error: 'Bilinmeyen işlem.' }, { status: 400 });
+  } catch (error: any) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+}
 
-      return {
-        id: table.id,
-        tableNumber: table.tableNumber,
-        label: table.label,
-        capacity: table.capacity,
-        status: table.status,
-        orderStatus: tableStatus,
-        sessionId: activeSession?.id || null,
-        pendingCount: pendingOrders.length,
-        confirmedCount: confirmedOrders.length,
-        totalOrders: allOrders.length,
-        totalAmount,
-      };
-    });
+export async function DELETE(request: Request) {
+  try {
+    const body = await request.json();
+    const { id, action } = body;
 
-    return NextResponse.json({ success: true, data: mappedTables });
-  } catch (error) {
-    console.error('Fetch admin tables error:', error);
-    return NextResponse.json(
-      { success: false, error: 'Sunucu hatası' },
-      { status: 500 }
-    );
+    if (action === 'table') {
+      if (!id) return NextResponse.json({ success: false, error: 'Masa ID gerekli.' }, { status: 400 });
+      await db.delete(tables).where(eq(tables.id, id));
+      return NextResponse.json({ success: true });
+    }
+
+    return NextResponse.json({ success: false, error: 'Bilinmeyen işlem.' }, { status: 400 });
+  } catch (error: any) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

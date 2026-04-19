@@ -16,24 +16,27 @@ export default function AdminLoginPage() {
     setError('');
     setIsLoading(true);
 
-    // Şimdilik sabit kullanıcılar (DB entegrasyonu sonra yapılacak)
-    const users: Record<string, { password: string; role: string }> = {
-      garson: { password: 'garson123', role: 'waiter' },
-      mutfak: { password: 'mutfak123', role: 'kitchen' },
-      admin:  { password: 'admin123',  role: 'owner' },
-    };
+    try {
+      const res = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await res.json();
 
-    await new Promise((r) => setTimeout(r, 600)); // Simülasyon
-
-    const user = users[username.toLowerCase()];
-    if (user && user.password === password) {
-      // Cookie/localStorage ile oturum simülasyonu
-      localStorage.setItem('admin_role', user.role);
-      localStorage.setItem('admin_user', username);
-      const roleRoute = user.role === 'owner' ? 'dashboard' : user.role;
-      router.push(`/admin/${roleRoute}`);
-    } else {
-      setError('Kullanıcı adı veya şifre hatalı.');
+      if (data.success) {
+        localStorage.setItem('admin_role', data.user.role);
+        localStorage.setItem('admin_user', data.user.username);
+        localStorage.setItem('admin_name', data.user.name);
+        
+        const roleRoute = data.user.role === 'owner' ? 'dashboard' : data.user.role;
+        router.push(`/admin/${roleRoute}`);
+      } else {
+        setError(data.error);
+      }
+    } catch (err) {
+      setError('Bir bağlantı hatası oluştu. Lütfen tekrar deneyin.');
+      console.error(err);
     }
 
     setIsLoading(false);

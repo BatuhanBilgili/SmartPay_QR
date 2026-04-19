@@ -207,9 +207,8 @@ export default function DashboardPage() {
   const maxHourlyRevenue = stats ? Math.max(...stats.hourlyRevenue.map((h) => h.revenue), 1) : 1;
 
   return (
-    <div className="admin-body">
-      <div className="admin-layout" style={{ paddingTop: 0 }}>
-        <main className="admin-main">
+    <>
+      <main className="admin-main">
 
           {/* ── Page Header ── */}
           <div className="admin-page-header" style={{ marginBottom: 40 }}>
@@ -400,7 +399,6 @@ export default function DashboardPage() {
             <span className="material-symbols-outlined" style={{ fontSize: '1.875rem' }}>refresh</span>
           </button>
         </main>
-      </div>
 
       {/* ════ Z Report Modal ════ */}
       {showZReport && (
@@ -528,6 +526,6 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

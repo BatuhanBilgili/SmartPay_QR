@@ -102,6 +102,7 @@ export async function POST(request: Request) {
         sessionId: activeSession.id,
         participantId: participantId || null,
         totalAmount: totalAmount.toFixed(2),
+        status: 'preparing',
       })
       .returning();
 
@@ -109,6 +110,7 @@ export async function POST(request: Request) {
     const finalItemsData = orderItemsPayload.map((oi) => ({
       ...oi,
       orderId: newOrder.id,
+      status: 'preparing',
     }));
 
     await db.insert(orderItems).values(finalItemsData);

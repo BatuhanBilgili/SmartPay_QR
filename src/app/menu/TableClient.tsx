@@ -454,7 +454,7 @@ export default function TableClient({
             {featuredItem && activeCategory === categories[0]?.id && (
               <section style={{ marginBottom: '3rem', padding: '0 20px', position: 'relative' }} id="hero-section">
                 <div style={{ position: 'relative', width: '100%', height: 256, borderRadius: '1.5rem', overflow: 'hidden', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)' }}>
-                  <Image src={featuredItem.image} alt={featuredItem.name} fill style={{ objectFit: 'cover' }} />
+                  <img src={featuredItem.image} alt={featuredItem.name} style={{ objectFit: 'cover', width: '100%', height: '100%' }} />
                   <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', padding: '1.5rem', background: 'linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.2) 50%, transparent 100%)' }}>
                     <span style={{ color: 'rgba(255,255,255,0.9)', fontSize: 10, fontWeight: 700, letterSpacing: '0.15em', textTransform: 'uppercase', marginBottom: 6 }}>Günün Spesiyali</span>
                     <h2 style={{ color: 'white', fontSize: '2rem', fontWeight: 900, letterSpacing: '-0.02em', lineHeight: 1.1 }}>{featuredItem.name}</h2>
@@ -852,7 +852,7 @@ export default function TableClient({
           {cartItems.map(({ menuItem, quantity }) => (
             <div key={menuItem.id} className="drawer-item">
               <div className="drawer-item__info">
-                <Image src={menuItem.image} alt={menuItem.name} width={56} height={56} className="drawer-item__image" />
+                <img src={menuItem.image} alt={menuItem.name} width={56} height={56} className="drawer-item__image" style={{ objectFit: 'cover' }} />
                 <div>
                   <div className="drawer-item__name">{menuItem.name}</div>
                   <div className="drawer-item__price">{formatPrice(menuItem.price)}</div>
@@ -1049,7 +1049,7 @@ function MenuCardTrending({
         </div>
       </div>
       <div style={{ width: 100, height: 100, borderRadius: '1rem', overflow: 'hidden', position: 'relative', flexShrink: 0 }}>
-        <Image src={item.image} alt={item.name} fill sizes="100px" style={{ objectFit: 'cover' }} />
+        <img src={item.image} alt={item.name} style={{ objectFit: 'cover', width: '100%', height: '100%' }} />
       </div>
     </div>
   );
@@ -1066,7 +1066,7 @@ function MenuCardStandard({
       display: 'flex', flexDirection: 'column', boxShadow: 'var(--shadow-ambient)', marginBottom: '1.5rem'
     }}>
       <div style={{ height: 200, position: 'relative', width: '100%', overflow: 'hidden' }}>
-        <Image src={item.image} alt={item.name} fill sizes="100vw" style={{ objectFit: 'cover', transition: 'transform 0.5s' }} />
+        <img src={item.image} alt={item.name} style={{ objectFit: 'cover', width: '100%', height: '100%', transition: 'transform 0.5s' }} />
         <div style={{ position: 'absolute', top: 16, right: 16, background: 'rgba(255,255,255,0.9)', backdropFilter: 'blur(12px)', padding: '6px 14px', borderRadius: '9999px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
           <span style={{ color: 'var(--primary)', fontWeight: 800, fontSize: '0.875rem' }}>{formatPrice(item.price)}</span>
         </div>
