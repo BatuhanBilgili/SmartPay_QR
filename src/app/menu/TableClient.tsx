@@ -133,6 +133,14 @@ export default function TableClient({
   const categoryTabsRef = useRef<HTMLDivElement>(null);
   const hasAutoJoined = useRef(false);
 
+  // ── Toast Timer ──
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
+
   // ── Auto Join / Guest Identity ──
   useEffect(() => {
     // If not already a participant, create an anonymous guest identity automatically
@@ -191,7 +199,7 @@ export default function TableClient({
       const MAX_QUANTITY = 10;
       if (existing) {
         if (existing.quantity >= MAX_QUANTITY) {
-          alert(`Bir üründen en fazla ${MAX_QUANTITY} adet ekleyebilirsiniz.`);
+          setToast({ title: 'Ürün Limiti', desc: `Bir üründen en fazla ${MAX_QUANTITY} adet ekleyebilirsiniz.` });
           return prev;
         }
         next.set(item.id, { ...existing, quantity: existing.quantity + 1 });
@@ -254,15 +262,16 @@ export default function TableClient({
 
       if (data.success) {
         // Show success, maybe switch to orders tab
+        setToast({ title: 'Siparişiniz Alındı', desc: 'Siparişiniz başarıyla mutfağa iletildi.' });
         setCart(new Map());
         setIsCartOpen(false);
         setActiveTab('orders');
       } else {
-        alert(data.error || 'Sipariş oluşturulamadı');
+        setToast({ title: 'Hata', desc: data.error || 'Sipariş oluşturulamadı' });
       }
     } catch (error) {
       console.error('Sipariş hatası:', error);
-      alert('Bağlantı Hatası');
+      setToast({ title: 'Bağlantı Hatası', desc: 'Lütfen internet bağlantınızı kontrol edin.' });
     } finally {
       setIsOrdering(false);
     }
@@ -411,6 +420,16 @@ export default function TableClient({
 
   return (
     <div className="app-container" style={{ position: 'relative', width: '100%', maxWidth: '480px', margin: '0 auto' }}>
+      {/* ── Toasts ── */}
+      {toast && (
+        <div className="toast-container">
+          <div className="toast">
+            <div className="toast__title">{toast.title}</div>
+            <div className="toast__desc">{toast.desc}</div>
+          </div>
+        </div>
+      )}
+
       {/* ── Sticky Header Group ── */}
       <div className="sticky-header-group">
         {/* ── Header ── */}

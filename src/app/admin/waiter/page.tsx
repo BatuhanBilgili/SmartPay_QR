@@ -67,7 +67,6 @@ export default function WaiterPanelPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isModalLoading, setIsModalLoading] = useState(false);
-  const [mobileNavTab, setMobileNavTab] = useState('tables');
 
   // ── Basket State ──
   const [basket, setBasket] = useState<{ menuItemId: string; name: string; quantity: number; price: string; maxQuantity: number | null }[]>([]);
@@ -97,7 +96,6 @@ export default function WaiterPanelPage() {
       return;
     }
     fetchTables();
-    // Her 10 saniyede yenile
     const interval = setInterval(fetchTables, 10000);
     return () => clearInterval(interval);
   }, [router, fetchTables]);
@@ -122,27 +120,11 @@ export default function WaiterPanelPage() {
   const closeModal = () => {
     setIsModalOpen(false);
     setSelectedTable(null);
-    setBasket([]); // Sepeti temizle
-    fetchTables(); // Listeyi yenile
+    setBasket([]);
+    fetchTables();
   };
 
-  // ── Add item to table ──
-  const addItemToTable = async (menuItemId: string) => {
-    if (!selectedTable) return;
-    try {
-      await fetch(`/api/admin/tables/${selectedTable.table.id}/orders`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: [{ menuItemId, quantity: 1 }] }),
-      });
-      // Refresh modal data
-      const res = await fetch(`/api/admin/tables/${selectedTable.table.id}/orders`);
-      const data = await res.json();
-      if (data.success) setSelectedTable(data.data);
-    } catch (err) {
-      console.error('Ürün ekleme hatası:', err);
-    }
-  };
+
 
   // ── Delete order item ──
   const deleteOrderItem = (itemId: string, name: string) => {
@@ -163,13 +145,12 @@ export default function WaiterPanelPage() {
 
       await fetch(endpoint, { method: 'DELETE' });
 
-      // Refresh modal data
       if (selectedTable) {
         const res = await fetch(`/api/admin/tables/${selectedTable.table.id}/orders`);
         const data = await res.json();
         if (data.success) setSelectedTable(data.data);
       }
-      fetchTables(); // Sync main screen
+      fetchTables();
       setConfirmAction(null);
     } catch (err) {
       console.error('Silme hatası:', err);
@@ -184,7 +165,6 @@ export default function WaiterPanelPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status }),
       });
-      // Refresh modal data
       if (selectedTable) {
         const res = await fetch(`/api/admin/tables/${selectedTable.table.id}/orders`);
         const data = await res.json();
@@ -208,6 +188,21 @@ export default function WaiterPanelPage() {
   const timeStr = now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
   const dayStr = now.toLocaleDateString('tr-TR', { weekday: 'long' });
 
+  // ── Group tables by label ──
+  const groupedTables = tables.reduce((groups, table) => {
+    const key = table.label || 'Genel';
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(table);
+    return groups;
+  }, {} as Record<string, TableData[]>);
+
+  // Sort groups: labeled groups alphabetically, "Genel" last
+  const sortedGroupKeys = Object.keys(groupedTables).sort((a, b) => {
+    if (a === 'Genel') return 1;
+    if (b === 'Genel') return -1;
+    return a.localeCompare(b, 'tr');
+  });
+
   const statusLabel = (s: string) => {
     switch (s) {
       case 'pending': return 'Bekliyor';
@@ -222,7 +217,6 @@ export default function WaiterPanelPage() {
   return (
     <div className="admin-body">
       <div className="admin-layout" style={{ paddingTop: 0 }}>
-        {/* ── Main Content ── */}
         <main className="admin-main">
           {/* Header */}
           <div className="admin-page-header">
@@ -255,76 +249,90 @@ export default function WaiterPanelPage() {
             </div>
           </div>
 
-          {/* ── Active Orders (Pending) ── */}
+          {/* ── Table Floor Grid — Grouped by Label ── */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+            <h3 className="admin-section-title" style={{ margin: 0 }}>
+              <span className="material-symbols-outlined" style={{ verticalAlign: 'middle', marginRight: 8 }}>table_restaurant</span>
+              Masa Haritası
+            </h3>
+            {pendingTables.length > 0 && (
+              <span className="admin-badge admin-badge--new" style={{ animation: 'pulse 2s infinite' }}>
+                {pendingTables.length} Aktif Masa
+              </span>
+            )}
+          </div>
+
+          {/* ── Active Orders (Pending) List ── */}
           {pendingTables.length > 0 && (
-            <div style={{ marginBottom: 40 }}>
-              <h3 className="admin-section-title">
-                <span className="material-symbols-outlined" style={{ color: 'var(--primary)', verticalAlign: 'middle', marginRight: 8 }}>notifications_active</span>
-                Aktif Siparişler
-              </h3>
-              <div className="active-orders-scroll">
-                {pendingTables.map(t => (
-                  <div key={t.id} className="active-order-card" onClick={() => openTableModal(t.id)} style={{ cursor: 'pointer' }}>
-                    <div className="active-order-card-header">
-                      <div className="active-order-card-table">
-                        <div className="active-order-card-table-num">{t.tableNumber}</div>
-                        <div>
-                          <div style={{ fontWeight: 700, fontSize: '0.875rem' }}>Masa {t.tableNumber}</div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--on-surface-variant)' }}>{t.label}</div>
-                        </div>
+            <div className="active-orders-scroll" style={{ marginBottom: 32 }}>
+              {pendingTables.map(t => (
+                <div key={t.id} className="active-order-card" onClick={() => openTableModal(t.id)} style={{ cursor: 'pointer', borderLeft: '4px solid var(--primary)' }}>
+                  <div className="active-order-card-header">
+                    <div className="active-order-card-table">
+                      <div className="active-order-card-table-num">{t.tableNumber}</div>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: '0.875rem' }}>Masa {t.tableNumber}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--on-surface-variant)' }}>{t.label || 'Genel'}</div>
                       </div>
-                      <span className="admin-badge admin-badge--new">{t.pendingCount} Yeni</span>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                      <span style={{ fontSize: '0.75rem', color: 'var(--on-surface-variant)', fontWeight: 600 }}>{t.totalOrders} sipariş</span>
-                      <span style={{ fontWeight: 900, color: 'var(--on-surface)' }}>₺{t.totalAmount.toFixed(2)}</span>
-                    </div>
+                    <span className="material-symbols-outlined" style={{ color: 'var(--primary)', animation: 'ring-bell 1.5s infinite' }}>notifications_active</span>
                   </div>
-                ))}
-              </div>
+                </div>
+              ))}
             </div>
           )}
-
-          {/* ── Table Floor Grid ── */}
-          <h3 className="admin-section-title">
-            <span className="material-symbols-outlined" style={{ verticalAlign: 'middle', marginRight: 8 }}>table_restaurant</span>
-            Masa Haritası
-          </h3>
 
           {isLoading ? (
             <div style={{ textAlign: 'center', padding: 60, color: 'var(--on-surface-variant)' }}>
               Masalar yükleniyor...
             </div>
           ) : (
-            <div className="floor-grid">
-              {tables.map((t) => (
-                <div
-                  key={t.id}
-                  className={`floor-tile floor-tile--${t.orderStatus}`}
-                  onClick={() => openTableModal(t.id)}
-                >
-                  {/* Status Icon */}
-                  {t.orderStatus === 'pending' && (
-                    <span className="floor-tile-icon floor-tile-icon--bell material-symbols-outlined">
-                      notifications
-                    </span>
+            <div>
+              {sortedGroupKeys.map((groupKey) => (
+                <div key={groupKey} style={{ marginBottom: 40 }}>
+                  {/* Section header — only shown if there's more than one group */}
+                  {sortedGroupKeys.length > 1 && (
+                    <div className="floor-section-header">
+                      <span className="material-symbols-outlined floor-section-icon">
+                        {groupKey.toLowerCase().includes('bahçe') || groupKey.toLowerCase().includes('bahce') || groupKey.toLowerCase().includes('teras')
+                          ? 'park'
+                          : groupKey.toLowerCase().includes('kat')
+                            ? 'floor'
+                            : 'meeting_room'}
+                      </span>
+                      <span className="floor-section-title">{groupKey}</span>
+                      <span className="floor-section-count">{groupedTables[groupKey].length} masa</span>
+                    </div>
                   )}
-                  {t.orderStatus === 'confirmed' && (
-                    <span className="floor-tile-icon floor-tile-icon--check material-symbols-outlined">
-                      check_circle
-                    </span>
-                  )}
+                  <div className="floor-grid">
+                    {groupedTables[groupKey].map((t) => (
+                      <div
+                        key={t.id}
+                        className={`floor-tile floor-tile--${t.orderStatus}`}
+                        onClick={() => openTableModal(t.id)}
+                      >
+                        {(t.orderStatus === 'pending' || t.orderStatus === 'confirmed') && (
+                          <span className="floor-tile-icon floor-tile-icon--bell-red material-symbols-outlined">
+                            notifications
+                          </span>
+                        )}
+                        {t.orderStatus === 'served' && (
+                          <span className="floor-tile-icon floor-tile-icon--bell-green material-symbols-outlined">
+                            notifications
+                          </span>
+                        )}
 
-                  <span className="floor-tile-number">{t.tableNumber}</span>
-                  <span className="floor-tile-label">{t.label}</span>
+                        <span className="floor-tile-number">{t.tableNumber}</span>
+                        <span className="floor-tile-label">{t.label || 'Genel'}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
           )}
         </main>
       </div>
-
-      {/* ── Bottom Nav Removed ── */}
 
       {/* ── FAB ── */}
       <button className="admin-fab" onClick={() => fetchTables()}>
@@ -379,7 +387,6 @@ export default function WaiterPanelPage() {
                           const basketItem = basket.find(b => b.menuItemId === item.id);
                           const basketQty = basketItem?.quantity || 0;
 
-                          // Hesaplanan toplam adet (mevcut aktif siparişler + sebetteki)
                           const currentTotalInOrders = selectedTable.orders
                             .filter(o => o.status !== 'cancelled')
                             .flatMap(o => o.items)
@@ -444,7 +451,7 @@ export default function WaiterPanelPage() {
 
                   {/* Right: Orders & Basket */}
                   <div className="table-modal-orders">
-                    {/* ── NEW: Current Basket ── */}
+                    {/* Current Basket */}
                     {basket.length > 0 && (
                       <div className="modal-order-group modal-order-group--basket">
                         <div className="modal-order-group-header">
@@ -460,7 +467,7 @@ export default function WaiterPanelPage() {
                           </div>
                         ))}
                         <div className="modal-order-total">
-                          <span className="modal-order-total-label">Basket Toplam</span>
+                          <span className="modal-order-total-label">Toplam</span>
                           <span className="modal-order-total-value">₺{basket.reduce((sum, i) => sum + (parseFloat(i.price) * i.quantity), 0).toFixed(2)}</span>
                         </div>
                         <div className="modal-order-actions">
@@ -475,11 +482,10 @@ export default function WaiterPanelPage() {
                                   body: JSON.stringify({ items: basket.map(b => ({ menuItemId: b.menuItemId, quantity: b.quantity })) }),
                                 });
                                 setBasket([]);
-                                // Yenile
                                 const res = await fetch(`/api/admin/tables/${selectedTable.table.id}/orders`);
                                 const data = await res.json();
                                 if (data.success) setSelectedTable(data.data);
-                                fetchTables(); // Sync main screen
+                                fetchTables();
                               } catch (err) {
                                 console.error('Sipariş gönderim hatası:', err);
                               }

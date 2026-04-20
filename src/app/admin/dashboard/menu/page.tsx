@@ -209,20 +209,20 @@ export default function MenuPage() {
                     const cat = categories.find(c => c.id === item.categoryId);
                     return (
                       <tr key={item.id} style={{ opacity: item.isAvailable ? 1 : 0.5 }}>
-                        <td style={{ fontSize: '1.5rem', textAlign: 'center' }}>
+                        <td data-label="Görsel" style={{ fontSize: '1.5rem', textAlign: 'center' }}>
                           {item.imageUrl?.startsWith('http') ? (
                             <img src={item.imageUrl} alt={item.name} style={{ width: 32, height: 32, objectFit: 'cover', borderRadius: 8 }} />
                           ) : (
                             item.imageUrl || '🍲'
                           )}
                         </td>
-                        <td style={{ fontWeight: 600 }}>{item.name}</td>
-                        <td>
+                        <td data-label="Ürün Adı" style={{ fontWeight: 600 }}>{item.name}</td>
+                        <td data-label="Kategori">
                           <span style={{ background: 'rgba(0,0,0,0.05)', padding: '4px 8px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 600 }}>
                             {cat?.name || 'Bilinmiyor'}
                           </span>
                         </td>
-                        <td>
+                        <td data-label="Drm">
                            <button onClick={async () => {
                              await fetch('/api/admin/menu', { method: 'PATCH', headers: { 'Content-Type': 'application/json'}, body: JSON.stringify({ action: 'item', id: item.id, isAvailable: !item.isAvailable }) });
                              fetchData();
@@ -230,7 +230,7 @@ export default function MenuPage() {
                              {item.isAvailable ? 'Açık' : 'Tükendi'}
                            </button>
                         </td>
-                        <td>
+                        <td data-label="Fiyat">
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <span style={{ fontWeight: 700 }}>₺</span>
                             <input 
@@ -242,7 +242,7 @@ export default function MenuPage() {
                             />
                           </div>
                         </td>
-                        <td style={{ textAlign: 'right' }}>
+                        <td data-label="İşlemler" style={{ textAlign: 'right' }}>
                           <button onClick={() => editItem(item)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--primary)' }}>
                             Düzenle
                           </button>

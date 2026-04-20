@@ -8,9 +8,14 @@ export default function AdminDashboardLayout({
 }) {
   return (
     <div className="admin-body">
-      <div style={{ display: 'flex', minHeight: '100vh' }}>
+      {/* 
+        On desktop (≥1024px):  AdminSidebar renders as a sticky left column.
+        On mobile  (<1024px):  AdminSidebar renders only a fixed top bar + overlay drawer.
+                               The main content needs padding-top to clear the top bar.
+      */}
+      <div className="dashboard-layout">
         <AdminSidebar />
-        <div style={{ flex: 1, overflowY: 'auto' }}>
+        <div className="dashboard-content">
           {children}
         </div>
       </div>

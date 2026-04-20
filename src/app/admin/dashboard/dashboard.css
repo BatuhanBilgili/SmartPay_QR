@@ -366,18 +366,18 @@
   inset: 0;
   background: rgba(0,0,0,0.4);
   backdrop-filter: blur(4px);
-  z-index: 100;
+  z-index: 2000;
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: 24px;
+  padding: 16px;
   overflow-y: auto;
 }
 
 .dash-modal {
   background: var(--surface-container-lowest);
   border-radius: var(--admin-radius-3xl);
-  width: 100%;
+  width: calc(100% - 32px);
   max-width: 700px;
   box-shadow: 0 24px 64px rgba(0,0,0,0.2);
   overflow: hidden;
@@ -465,6 +465,77 @@
   font-weight: 500;
 }
 .zr-modal-table tbody tr:hover td { background: var(--surface-container-low); }
+
+/* Responsive Table (Card View on Mobile) */
+@media (max-width: 767px) {
+  .zr-modal-table, 
+  .zr-modal-table thead, 
+  .zr-modal-table tbody, 
+  .zr-modal-table th, 
+  .zr-modal-table td, 
+  .zr-modal-table tr { 
+    display: block; 
+  }
+
+  .zr-modal-table thead tr { 
+    position: absolute;
+    top: -9999px;
+    left: -9999px;
+  }
+
+  .zr-modal-table tr {
+    margin-bottom: 20px;
+    background: var(--surface-container-lowest);
+    border: 1px solid var(--outline-variant);
+    border-radius: var(--admin-radius-2xl);
+    padding: 12px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+  }
+
+  .zr-modal-table td { 
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+    position: relative;
+    padding-left: 50% !important;
+    text-align: right !important;
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+  }
+
+  .zr-modal-table td:last-child {
+    border-bottom: none;
+  }
+
+  .zr-modal-table td::before { 
+    content: attr(data-label);
+    position: absolute;
+    left: 12px;
+    width: 45%; 
+    padding-right: 10px; 
+    white-space: nowrap;
+    text-align: left;
+    font-weight: 700;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--on-surface-variant);
+  }
+
+  /* Specific tweaks for image cell in card view */
+  .zr-modal-table td[data-label="Görsel"] {
+    justify-content: center;
+    padding-left: 12px !important;
+    text-align: center !important;
+    background: var(--surface-container-low);
+    margin: -12px -12px 12px -12px;
+    border-radius: var(--admin-radius-2xl) var(--admin-radius-2xl) 0 0;
+    height: 60px;
+  }
+  .zr-modal-table td[data-label="Görsel"]::before {
+    display: none;
+  }
+}
 .zr-modal-table tfoot td {
   border-top: 2px solid var(--outline-variant);
   border-bottom: none;
