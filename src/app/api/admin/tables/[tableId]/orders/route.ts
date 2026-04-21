@@ -36,7 +36,9 @@ export async function GET(
           with: {
             items: {
               with: {
-                menuItem: true,
+                menuItem: {
+                  with: { category: true },
+                },
               },
             },
           },
@@ -70,6 +72,7 @@ export async function GET(
         unitPrice: item.unitPrice,
         totalPrice: item.totalPrice,
         status: item.status,
+        isDrink: item.menuItem?.category?.name?.toLowerCase().includes('içecek') || item.menuItem?.category?.name?.toLowerCase().includes('i̇çecek') || false,
       })),
     })) || [];
 

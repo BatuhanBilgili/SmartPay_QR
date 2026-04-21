@@ -50,34 +50,36 @@ export async function POST(request: Request) {
     const menuItemIds = items.map((i: any) => i.menuItemId);
     const dbMenuItems = await db.query.menuItems.findMany({
       where: inArray(menuItems.id, menuItemIds),
+      with: {
+        category: true, // Fetch category to determine if it's a drink
+      }
     });
 
     const menuMap = new Map(dbMenuItems.map((m) => [m.id, m]));
 
-    // 3. Calculate total amount
-    let totalAmount = 0;
-    const orderItemsPayload: any[] = [];
+    // 3. Calculate total amount & Split Items
+    let sessionTotalAddition = 0;
+    const foodItemsPayload: any[] = [];
+    const drinkItemsPayload: any[] = [];
+
+    let foodTotal = 0;
+    let drinkTotal = 0;
     
     for (const inputItem of items) {
       const dbMenu = menuMap.get(inputItem.menuItemId);
-      if (!dbMenu) {
-        return NextResponse.json(
-          { success: false, error: 'Sepetteki bazı ürünler bulunamadı.' },
-          { status: 400 }
-        );
-      }
+      if (!dbMenu) continue;
       
       const unitPrice = parseFloat(dbMenu.price as string);
       const quantity = parseInt(inputItem.quantity, 10);
       
-      if (isNaN(quantity) || quantity <= 0) {
-          continue;
-      }
+      if (isNaN(quantity) || quantity <= 0) continue;
 
       const itemTotal = unitPrice * quantity;
-      totalAmount += itemTotal;
+      sessionTotalAddition += itemTotal;
 
-      orderItemsPayload.push({
+      const isDrink = dbMenu.category?.name.toLowerCase().includes('içecek') || dbMenu.category?.name.toLowerCase().includes('i̇çecek');
+
+      const payloadItem = {
         menuItemId: dbMenu.id,
         quantity,
         unitPrice: unitPrice.toFixed(2),
@@ -85,43 +87,78 @@ export async function POST(request: Request) {
         notes: inputItem.notes 
           ? `${customerName ? `[${customerName}] ` : ''}${inputItem.notes}` 
           : (customerName ? `[${customerName}]` : null),
-      });
+      };
+
+      if (isDrink) {
+        drinkItemsPayload.push(payloadItem);
+        drinkTotal += itemTotal;
+      } else {
+        foodItemsPayload.push(payloadItem);
+        foodTotal += itemTotal;
+      }
     }
 
-    if (orderItemsPayload.length === 0) {
+    if (foodItemsPayload.length === 0 && drinkItemsPayload.length === 0) {
       return NextResponse.json(
         { success: false, error: 'Sipariş edilebilir geçerli ürün yok.' },
         { status: 400 }
       );
     }
 
-    // 4. Create order with participantId
-    const [newOrder] = await db
-      .insert(orders)
-      .values({
-        sessionId: activeSession.id,
-        participantId: participantId || null,
-        totalAmount: totalAmount.toFixed(2),
-        status: 'preparing',
-      })
-      .returning();
+    // 4. Create separate orders based on type
+    const resultingOrders = [];
 
-    // 5. Create order items
-    const finalItemsData = orderItemsPayload.map((oi) => ({
-      ...oi,
-      orderId: newOrder.id,
-      status: 'preparing',
-    }));
+    // 4a. Create Food Order (goes to kitchen)
+    if (foodItemsPayload.length > 0) {
+      const [newFoodOrder] = await db
+        .insert(orders)
+        .values({
+          sessionId: activeSession.id,
+          participantId: participantId || null,
+          totalAmount: foodTotal.toFixed(2),
+          status: 'confirmed', // Yiyecekler doğrudan mutfağa gider (confirmed/preparing)
+        })
+        .returning();
 
-    await db.insert(orderItems).values(finalItemsData);
+      const finalFoodItemsData = foodItemsPayload.map((oi) => ({
+        ...oi,
+        orderId: newFoodOrder.id,
+        status: 'confirmed', 
+      }));
+
+      await db.insert(orderItems).values(finalFoodItemsData);
+      resultingOrders.push(newFoodOrder);
+    }
+
+    // 4b. Create Drink Order (goes directly to waiter as served)
+    if (drinkItemsPayload.length > 0) {
+      const [newDrinkOrder] = await db
+        .insert(orders)
+        .values({
+          sessionId: activeSession.id,
+          participantId: participantId || null,
+          totalAmount: drinkTotal.toFixed(2),
+          status: 'served', // İçecekler anında garsonun 'Teslim Bekleyen' ekranına tıklar
+        })
+        .returning();
+
+      const finalDrinkItemsData = drinkItemsPayload.map((oi) => ({
+        ...oi,
+        orderId: newDrinkOrder.id,
+        status: 'served', 
+      }));
+
+      await db.insert(orderItems).values(finalDrinkItemsData);
+      resultingOrders.push(newDrinkOrder);
+    }
     
     // 6. Update session total amount 
-    const updatedTotal = parseFloat(activeSession.totalAmount as string) + totalAmount;
+    const updatedTotal = parseFloat(activeSession.totalAmount as string) + sessionTotalAddition;
     await db.update(tableSessions)
       .set({ totalAmount: updatedTotal.toFixed(2) })
       .where(eq(tableSessions.id, activeSession.id));
 
-    return NextResponse.json({ success: true, order: newOrder });
+    return NextResponse.json({ success: true, orders: resultingOrders });
   } catch (error: any) {
     console.error('Create order error:', error);
     return NextResponse.json(

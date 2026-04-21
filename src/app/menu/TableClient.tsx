@@ -294,6 +294,24 @@ export default function TableClient({
     }
   }, [sessionId]);
 
+  const handleCancelItem = useCallback(async (itemId: string, itemName: string) => {
+    if (!window.confirm(`"${itemName}" ürününü iptal etmek istediğinize emin misiniz?`)) return;
+
+    try {
+      const res = await fetch(`/api/orders/items/${itemId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        setToast({ title: 'İptal Edildi', desc: `"${itemName}" siparişinizden çıkarıldı.` });
+        fetchOrders();
+      } else {
+        setToast({ title: 'Hata', desc: data.error || 'İptal işlemi başarısız.' });
+      }
+    } catch (error) {
+      console.error('İptal hatası:', error);
+      setToast({ title: 'Hata', desc: 'İptal işlemi sırasında bağlantı koptu.' });
+    }
+  }, [fetchOrders]);
+
   useEffect(() => {
     if (activeTab === 'orders' || activeTab === 'split') {
       fetchOrders();

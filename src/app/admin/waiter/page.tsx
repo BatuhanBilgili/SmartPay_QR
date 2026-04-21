@@ -42,6 +42,7 @@ interface OrderItem {
   unitPrice: string;
   totalPrice: string;
   status: string;
+  isDrink?: boolean;
 }
 
 interface Order {
@@ -60,6 +61,18 @@ interface TableDetail {
   menu: MenuCategory[];
 }
 
+// ── Ready Order (Mutfaktan Hazır Çıkan, Garsonun Masaya Götüreceği) ──
+interface ReadyOrder {
+  id: string;
+  tableNumber: number;
+  tableLabel: string;
+  tableId: string | null;
+  updatedAt: string;
+  items: { id: string; name: string; quantity: number }[];
+}
+
+const DISMISSED_KEY = 'waiter_dismissed_orders';
+
 export default function WaiterPanelPage() {
   const router = useRouter();
   const [tables, setTables] = useState<TableData[]>([]);
@@ -68,11 +81,25 @@ export default function WaiterPanelPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isModalLoading, setIsModalLoading] = useState(false);
 
+  // ── Ready Orders (Teslim Bekleyen) ──
+  const [readyOrders, setReadyOrders] = useState<ReadyOrder[]>([]);
+  const [dismissedOrders, setDismissedOrders] = useState<Set<string>>(new Set());
+
   // ── Basket State ──
   const [basket, setBasket] = useState<{ menuItemId: string; name: string; quantity: number; price: string; maxQuantity: number | null }[]>([]);
 
   // ── Confirmation Toast State ──
   const [confirmAction, setConfirmAction] = useState<{ type: 'item' | 'order'; id: string; name: string } | null>(null);
+
+  // ── Load dismissed orders from localStorage ──
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem(DISMISSED_KEY) || '[]');
+      setDismissedOrders(new Set(stored));
+    } catch {
+      setDismissedOrders(new Set());
+    }
+  }, []);
 
   // ── Fetch all tables ──
   const fetchTables = useCallback(async () => {
@@ -89,6 +116,26 @@ export default function WaiterPanelPage() {
     }
   }, []);
 
+  // ── Fetch ready orders (mutfaktan hazır çıkan, teslim bekleyen) ──
+  const fetchReadyOrders = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/waiter/ready-orders');
+      const data = await res.json();
+      if (data.success) {
+        setReadyOrders(data.data);
+        // LocalStorage temizle: sunucuda artık olmayan sipariş ID'lerini sil
+        const serverIds = new Set<string>(data.data.map((o: ReadyOrder) => o.id));
+        setDismissedOrders(prev => {
+          const cleaned = new Set([...prev].filter(id => serverIds.has(id)));
+          localStorage.setItem(DISMISSED_KEY, JSON.stringify([...cleaned]));
+          return cleaned;
+        });
+      }
+    } catch (err) {
+      console.error('Ready orders fetch error:', err);
+    }
+  }, []);
+
   useEffect(() => {
     const role = localStorage.getItem('admin_role');
     if (role !== 'waiter') {
@@ -96,9 +143,26 @@ export default function WaiterPanelPage() {
       return;
     }
     fetchTables();
+    fetchReadyOrders();
     const interval = setInterval(fetchTables, 10000);
-    return () => clearInterval(interval);
-  }, [router, fetchTables]);
+    const readyInterval = setInterval(fetchReadyOrders, 10000);
+    return () => {
+      clearInterval(interval);
+      clearInterval(readyInterval);
+    };
+  }, [router, fetchTables, fetchReadyOrders]);
+
+  // ── Dismiss a ready order (Teslim Ettim) ──
+  const dismissReadyOrder = (orderId: string) => {
+    setDismissedOrders(prev => {
+      const next = new Set([...prev, orderId]);
+      localStorage.setItem(DISMISSED_KEY, JSON.stringify([...next]));
+      return next;
+    });
+  };
+
+  // ── Visible ready orders (dismissed olanları filtrele) ──
+  const visibleReadyOrders = readyOrders.filter(o => !dismissedOrders.has(o.id));
 
   // ── Fetch table detail ──
   const openTableModal = async (tableId: string) => {
@@ -123,8 +187,6 @@ export default function WaiterPanelPage() {
     setBasket([]);
     fetchTables();
   };
-
-
 
   // ── Delete order item ──
   const deleteOrderItem = (itemId: string, name: string) => {
@@ -196,7 +258,6 @@ export default function WaiterPanelPage() {
     return groups;
   }, {} as Record<string, TableData[]>);
 
-  // Sort groups: labeled groups alphabetically, "Genel" last
   const sortedGroupKeys = Object.keys(groupedTables).sort((a, b) => {
     if (a === 'Genel') return 1;
     if (b === 'Genel') return -1;
@@ -249,7 +310,54 @@ export default function WaiterPanelPage() {
             </div>
           </div>
 
-          {/* ── Table Floor Grid — Grouped by Label ── */}
+          {/* ════════════════════════════════════════════
+              TESLİM BEKLEYENLER — Mutfaktan Hazır Çıkan
+              ════════════════════════════════════════════ */}
+          {visibleReadyOrders.length > 0 && (
+            <div className="ready-orders-section">
+              <div className="ready-orders-header">
+                <span className="material-symbols-outlined ready-orders-icon">local_shipping</span>
+                <h3>Teslim Bekleyen Siparişler</h3>
+                <span className="admin-badge admin-badge--ready" style={{ animation: 'pulse 2s infinite' }}>
+                  {visibleReadyOrders.length} Hazır
+                </span>
+              </div>
+              <div className="ready-orders-scroll">
+                {visibleReadyOrders.map(order => (
+                  <div key={order.id} className="ready-order-card">
+                    <div className="ready-order-card-header">
+                      <div className="ready-order-card-table">
+                        <div className="ready-order-card-table-num">{order.tableNumber}</div>
+                        <div>
+                          <div className="ready-order-card-info-title">Masa {order.tableNumber}</div>
+                          <div className="ready-order-card-info-sub">{order.tableLabel || 'Genel'}</div>
+                        </div>
+                      </div>
+                      <span className="material-symbols-outlined" style={{ color: '#22c55e', fontSize: '1.3rem' }}>
+                        check_circle
+                      </span>
+                    </div>
+                    <div className="ready-order-items">
+                      {order.items.map(item => (
+                        <span key={item.id} className="ready-order-item-chip">
+                          {item.quantity}× {item.name}
+                        </span>
+                      ))}
+                    </div>
+                    <button
+                      className="ready-order-deliver-btn"
+                      onClick={() => dismissReadyOrder(order.id)}
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: '1rem' }}>done_all</span>
+                      Teslim Ettim
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── Masa Haritası başlığı ── */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
             <h3 className="admin-section-title" style={{ margin: 0 }}>
               <span className="material-symbols-outlined" style={{ verticalAlign: 'middle', marginRight: 8 }}>table_restaurant</span>
@@ -262,7 +370,7 @@ export default function WaiterPanelPage() {
             )}
           </div>
 
-          {/* ── Active Orders (Pending) List ── */}
+          {/* ── Active Orders (Pending) Scroll ── */}
           {pendingTables.length > 0 && (
             <div className="active-orders-scroll" style={{ marginBottom: 32 }}>
               {pendingTables.map(t => (
@@ -290,7 +398,6 @@ export default function WaiterPanelPage() {
             <div>
               {sortedGroupKeys.map((groupKey) => (
                 <div key={groupKey} style={{ marginBottom: 40 }}>
-                  {/* Section header — only shown if there's more than one group */}
                   {sortedGroupKeys.length > 1 && (
                     <div className="floor-section-header">
                       <span className="material-symbols-outlined floor-section-icon">
@@ -311,11 +418,13 @@ export default function WaiterPanelPage() {
                         className={`floor-tile floor-tile--${t.orderStatus}`}
                         onClick={() => openTableModal(t.id)}
                       >
+                        {/* 🔴 Kırmızı zil: mutfakta bekleyen siparişler */}
                         {(t.orderStatus === 'pending' || t.orderStatus === 'confirmed') && (
                           <span className="floor-tile-icon floor-tile-icon--bell-red material-symbols-outlined">
                             notifications
                           </span>
                         )}
+                        {/* 🟢 Yeşil zil: mutfaktan hazır çıkmış, teslim bekliyor */}
                         {t.orderStatus === 'served' && (
                           <span className="floor-tile-icon floor-tile-icon--bell-green material-symbols-outlined">
                             notifications
@@ -335,7 +444,7 @@ export default function WaiterPanelPage() {
       </div>
 
       {/* ── FAB ── */}
-      <button className="admin-fab" onClick={() => fetchTables()}>
+      <button className="admin-fab" onClick={() => { fetchTables(); fetchReadyOrders(); }}>
         <span className="material-symbols-outlined" style={{ fontSize: '1.875rem' }}>refresh</span>
       </button>
 
@@ -426,10 +535,7 @@ export default function WaiterPanelPage() {
                                   className="modal-menu-item-add"
                                   disabled={isMaxReached}
                                   onClick={() => {
-                                    if (isMaxReached) {
-                                      alert(`Maksimum sipariş limitine ulaşıldı (${item.maxQuantity} adet).`);
-                                      return;
-                                    }
+                                    if (isMaxReached) return;
                                     const existing = basket.find(b => b.menuItemId === item.id);
                                     if (existing) {
                                       setBasket(basket.map(b => b.menuItemId === item.id ? { ...b, quantity: b.quantity + 1 } : b));
@@ -528,7 +634,7 @@ export default function WaiterPanelPage() {
                                   <span className="modal-order-item-name">{item.name}</span>
                                 </div>
                                 <span className="modal-order-item-price">₺{parseFloat(item.totalPrice).toFixed(2)}</span>
-                                {order.status === 'pending' && (
+                                {(order.status !== 'cancelled' && (order.status !== 'served' || (item.isDrink && !dismissedOrders.has(order.id)))) && (
                                   <button
                                     className="modal-order-item-delete"
                                     onClick={() => deleteOrderItem(item.id, item.name)}
@@ -563,12 +669,12 @@ export default function WaiterPanelPage() {
                                   ✅ Servis Edildi
                                 </button>
                               )}
-                              {order.status === 'pending' && (
+                              {(order.status !== 'cancelled' && (order.status !== 'served' || (!dismissedOrders.has(order.id) && order.items.every(i => i.isDrink)))) && (
                                 <button
                                   className="modal-order-action-btn modal-order-action-btn--cancel"
                                   onClick={() => cancelOrder(order.id, new Date(order.createdAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }))}
                                 >
-                                  İptal
+                                  Tümünü İptal Et
                                 </button>
                               )}
                             </div>
