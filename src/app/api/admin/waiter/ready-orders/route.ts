@@ -5,7 +5,7 @@ import { eq, and, gt } from 'drizzle-orm';
 
 /**
  * GET /api/admin/waiter/ready-orders
- * Mutfak tarafından hazırlanan (status = 'served') ve garsonun masaya
+ * Mutfak tarafından hazırlanan (status = 'ready') ve garsonun masaya
  * iletmesi gereken siparişleri döndürür.
  * Son 6 saat içindeki siparişler filtrelenir (eski birikmiş kayıtlar hariç).
  */
@@ -15,7 +15,7 @@ export async function GET() {
 
     const readyOrders = await db.query.orders.findMany({
       where: and(
-        eq(orders.status, 'served'),
+        eq(orders.status, 'ready'),
         gt(orders.updatedAt, sixHoursAgo)
       ),
       orderBy: (o, { asc }) => [asc(o.updatedAt)],

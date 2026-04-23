@@ -130,7 +130,7 @@ export async function POST(request: Request) {
       resultingOrders.push(newFoodOrder);
     }
 
-    // 4b. Create Drink Order (goes directly to waiter as served)
+    // 4b. Create Drink Order (goes directly to waiter as ready)
     if (drinkItemsPayload.length > 0) {
       const [newDrinkOrder] = await db
         .insert(orders)
@@ -138,14 +138,14 @@ export async function POST(request: Request) {
           sessionId: activeSession.id,
           participantId: participantId || null,
           totalAmount: drinkTotal.toFixed(2),
-          status: 'served', // İçecekler anında garsonun 'Teslim Bekleyen' ekranına tıklar
+          status: 'ready', // İçecekler anında garsonun 'Teslim Bekleyen' ekranına düşer
         })
         .returning();
 
       const finalDrinkItemsData = drinkItemsPayload.map((oi) => ({
         ...oi,
         orderId: newDrinkOrder.id,
-        status: 'served', 
+        status: 'ready', 
       }));
 
       await db.insert(orderItems).values(finalDrinkItemsData);

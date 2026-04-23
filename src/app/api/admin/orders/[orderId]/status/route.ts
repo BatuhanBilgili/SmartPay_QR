@@ -17,7 +17,7 @@ export async function PATCH(
     const body = await request.json();
     const { status } = body;
 
-    const validStatuses = ['pending', 'confirmed', 'preparing', 'served', 'cancelled'];
+    const validStatuses = ['pending', 'confirmed', 'preparing', 'ready', 'served', 'cancelled'];
     if (!validStatuses.includes(status)) {
       return NextResponse.json(
         { success: false, error: 'Geçersiz durum' },

@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { db } from '@/lib/db';
-import { tables, tableSessions } from '@/lib/db/schema';
+import { tables, tableSessions, restaurants } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { cookies } from 'next/headers';
 import { nanoid } from 'nanoid';
@@ -21,7 +21,7 @@ export default async function JoinPage({
   const { token } = await params;
 
   // 1. Validate token
-  const table = await db.query.tables.findFirst({
+  let table = await db.query.tables.findFirst({
     where: eq(tables.currentToken, token),
     with: {
       restaurant: true,
@@ -31,6 +31,35 @@ export default async function JoinPage({
       },
     },
   });
+
+  // 1.1. If table not found, check if token is numeric and auto-create (Development/Testing feature)
+  if (!table && /^\d+$/.test(token)) {
+    const allRest = await db.select().from(restaurants).limit(1);
+    if (allRest.length > 0) {
+      const rest = allRest[0];
+      const tableNumber = parseInt(token, 10);
+      
+      // Create new table
+      const [newTable] = await db
+        .insert(tables)
+        .values({
+          restaurantId: rest.id,
+          tableNumber: tableNumber,
+          label: `Otomatik Masa ${tableNumber}`,
+          currentToken: token, // Token is the number itself for easy testing
+          tokenExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
+          status: 'available',
+        })
+        .returning();
+      
+      // Re-fetch or simulate the table object
+      table = {
+        ...newTable,
+        restaurant: rest,
+        sessions: [],
+      } as any;
+    }
+  }
 
   if (!table) {
     return (

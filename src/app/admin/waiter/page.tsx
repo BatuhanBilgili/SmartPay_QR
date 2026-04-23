@@ -11,7 +11,7 @@ interface TableData {
   label: string;
   capacity: number;
   status: string;
-  orderStatus: 'empty' | 'pending' | 'confirmed' | 'served';
+  orderStatus: 'empty' | 'pending' | 'confirmed' | 'ready' | 'served';
   sessionId: string | null;
   pendingCount: number;
   confirmedCount: number;
@@ -269,7 +269,8 @@ export default function WaiterPanelPage() {
       case 'pending': return 'Bekliyor';
       case 'confirmed': return 'Mutfakta';
       case 'preparing': return 'Hazırlanıyor';
-      case 'served': return 'Servis Edildi';
+      case 'ready': return 'Hazır';
+      case 'served': return 'Teslim Edildi';
       case 'cancelled': return 'İptal';
       default: return s;
     }
@@ -346,7 +347,10 @@ export default function WaiterPanelPage() {
                     </div>
                     <button
                       className="ready-order-deliver-btn"
-                      onClick={() => dismissReadyOrder(order.id)}
+                      onClick={() => {
+                        dismissReadyOrder(order.id);
+                        updateOrderStatus(order.id, 'served');
+                      }}
                     >
                       <span className="material-symbols-outlined" style={{ fontSize: '1rem' }}>done_all</span>
                       Teslim Ettim
@@ -425,7 +429,7 @@ export default function WaiterPanelPage() {
                           </span>
                         )}
                         {/* 🟢 Yeşil zil: mutfaktan hazır çıkmış, teslim bekliyor */}
-                        {t.orderStatus === 'served' && (
+                        {t.orderStatus === 'ready' && (
                           <span className="floor-tile-icon floor-tile-icon--bell-green material-symbols-outlined">
                             notifications
                           </span>
@@ -661,12 +665,12 @@ export default function WaiterPanelPage() {
                                   🍳 Mutfağa Gönder
                                 </button>
                               )}
-                              {(order.status === 'confirmed' || order.status === 'preparing') && (
+                              {(order.status === 'confirmed' || order.status === 'preparing' || order.status === 'ready') && (
                                 <button
                                   className="modal-order-action-btn modal-order-action-btn--served"
                                   onClick={() => updateOrderStatus(order.id, 'served')}
                                 >
-                                  ✅ Servis Edildi
+                                  ✅ Teslim Ettim
                                 </button>
                               )}
                               {(order.status !== 'cancelled' && (order.status !== 'served' || (!dismissedOrders.has(order.id) && order.items.every(i => i.isDrink)))) && (

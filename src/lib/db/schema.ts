@@ -34,6 +34,7 @@ export const orderStatusEnum = pgEnum('order_status', [
   'pending',
   'confirmed',
   'preparing',
+  'ready',
   'served',
   'cancelled',
 ]);
@@ -42,6 +43,7 @@ export const orderItemStatusEnum = pgEnum('order_item_status', [
   'pending',
   'confirmed',
   'preparing',
+  'ready',
   'served',
   'cancelled',
 ]);
@@ -76,6 +78,7 @@ export const userRoleEnum = pgEnum('user_role', [
   'admin',
   'waiter',
   'kitchen',
+  'cashier',
 ]);
 
 // ============================================================================
@@ -239,6 +242,7 @@ export const orderItems = pgTable('order_items', {
     .notNull()
     .references(() => menuItems.id, { onDelete: 'restrict' }),
   quantity: integer('quantity').notNull().default(1),
+  paidQuantity: integer('paid_quantity').notNull().default(0),
   unitPrice: numeric('unit_price', { precision: 10, scale: 2 }).notNull(),
   totalPrice: numeric('total_price', { precision: 10, scale: 2 }).notNull(),
   notes: text('notes'), // "Az acılı", "Soslu" gibi notlar

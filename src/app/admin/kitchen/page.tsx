@@ -67,13 +67,7 @@ export default function KitchenPanelPage() {
       await fetch(`/api/admin/orders/${orderId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'preparing' }),
-      });
-
-      await fetch(`/api/admin/orders/${orderId}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'served' }),
+        body: JSON.stringify({ status: 'ready' }),
       });
 
       fetchTickets();

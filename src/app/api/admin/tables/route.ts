@@ -41,12 +41,12 @@ export async function GET() {
         totalAmount = activeOrders.reduce((sum: number, o: any) => sum + parseFloat(o.totalAmount || '0'), 0);
         pendingCount = activeOrders.filter((o: any) => o.status === 'pending').length;
         confirmedCount = activeOrders.filter((o: any) => ['confirmed', 'preparing'].includes(o.status)).length;
-        const servedCount = activeOrders.filter((o: any) => o.status === 'served').length;
+        const readyCount = activeOrders.filter((o: any) => o.status === 'ready').length;
 
-        // Öncelik: pending (kırmızı zil) > confirmed/preparing (kırmızı zil) > served (yeşil zil)
+        // Öncelik: pending (kırmızı zil) > confirmed/preparing (kırmızı zil) > ready (yeşil zil)
         if (pendingCount > 0) orderStatus = 'pending';
         else if (confirmedCount > 0) orderStatus = 'confirmed';
-        else if (servedCount > 0) orderStatus = 'served';
+        else if (readyCount > 0) orderStatus = 'ready';
       }
 
       return {
@@ -55,7 +55,7 @@ export async function GET() {
         label: table.label,
         capacity: table.capacity,
         status: table.status,
-        orderStatus,      // 'empty' | 'pending' | 'confirmed' | 'served'
+        orderStatus,      // 'empty' | 'pending' | 'confirmed' | 'ready' | 'served'
         sessionId: activeSession?.id || null,
         pendingCount,
         confirmedCount,
