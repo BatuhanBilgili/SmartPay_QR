@@ -91,12 +91,12 @@ export async function POST(request: Request) {
       })
       .where(eq(tableSessions.id, sessionId));
 
-    // Close the table if fully paid
+    // ── Full payment: close session, free the table ──────────────────────
+    // Token stays the same — QR codes are permanent per table.
+    // Next scan of the same QR will create a brand-new session automatically.
     if (isFullyPaid && session.tableId) {
       await db.update(tables)
-        .set({ 
-          status: 'available',
-        })
+        .set({ status: 'available' })
         .where(eq(tables.id, session.tableId));
     }
 
@@ -105,7 +105,7 @@ export async function POST(request: Request) {
       data: {
         payment,
         isFullyPaid,
-        newPaidAmount
+        newPaidAmount,
       } 
     });
   } catch (error) {

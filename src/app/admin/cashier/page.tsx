@@ -47,22 +47,24 @@ export default function CashierPanelPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // Tabs: 'full' | 'equal' | 'itemized'
-  const [paymentType, setPaymentType] = useState<'full' | 'equal' | 'itemized'>('full');
+  // Payment mode: 'full' | 'itemized' | 'custom'
+  const [paymentMode, setPaymentMode] = useState<'full' | 'itemized' | 'custom'>('full');
 
-  // Equal Split State
-  const [splitCount, setSplitCount] = useState<number>(2);
+  // Split panel
+  const [showSplit, setShowSplit] = useState(false);
+  const [splitCount, setSplitCount] = useState(2);
 
-  // Itemized Split State: { [orderItemId]: quantityToPay }
+  // Itemized: { [orderItemId]: quantityToPay }
   const [itemSelections, setItemSelections] = useState<Record<string, number>>({});
+
+  // Custom amount
+  const [customAmount, setCustomAmount] = useState('');
 
   const fetchTables = useCallback(async () => {
     try {
       const res = await fetch('/api/admin/cashier/tables');
       const data = await res.json();
-      if (data.success) {
-        setTables(data.data);
-      }
+      if (data.success) setTables(data.data);
     } catch (err) {
       console.error('Fetch tables error:', err);
     } finally {
@@ -86,58 +88,65 @@ export default function CashierPanelPage() {
     router.push('/admin');
   };
 
+  const resetPanel = () => {
+    setItemSelections({});
+    setPaymentMode('full');
+    setShowSplit(false);
+    setSplitCount(2);
+    setCustomAmount('');
+  };
+
   const getTableStatusColor = (table: TableData) => {
-    if (!table.session) return 'var(--surface-container-high)'; // Empty
+    if (!table.session) return '#9e9e9e';
     const total = parseFloat(table.session.totalAmount);
     const paid = parseFloat(table.session.paidAmount);
-    if (paid >= total && total > 0) return '#4caf50';
+    if (total <= 0) return '#ff9800';
+    if (paid >= total) return '#4caf50';
     if (paid > 0) return '#ff9800';
     return '#f44336';
   };
 
   const selectedTable = tables.find(t => t.id === selectedTableId) || null;
-  const session = selectedTable?.session;
+  const session = selectedTable?.session ?? null;
   const totalAmount = session ? parseFloat(session.totalAmount) : 0;
   const paidAmount = session ? parseFloat(session.paidAmount) : 0;
   const remainingAmount = totalAmount - paidAmount;
 
-  // Calculate amount to pay based on current tab
-  let calculatedAmountToPay = 0;
-  if (paymentType === 'full') {
-    calculatedAmountToPay = remainingAmount;
-  } else if (paymentType === 'equal') {
-    calculatedAmountToPay = totalAmount / splitCount;
-    if (calculatedAmountToPay > remainingAmount) {
-      calculatedAmountToPay = remainingAmount;
-    }
-  } else if (paymentType === 'itemized') {
-    if (selectedTable) {
-      let sum = 0;
-      selectedTable.orders.forEach(order => {
-        order.items.forEach(item => {
-          const qty = itemSelections[item.id] || 0;
-          if (qty > 0) {
-             const unitPrice = parseFloat(item.unitPrice);
-             sum += qty * unitPrice;
-          }
-        });
-      });
-      calculatedAmountToPay = sum;
-    }
+  // Flat list of unpaid items across all orders
+  const allItems: OrderItem[] = selectedTable
+    ? selectedTable.orders.flatMap(o => o.items.filter(i => (i.quantity - (i.paidQuantity || 0)) > 0))
+    : [];
+
+  // Calculate amount for itemized mode
+  const itemizedTotal = allItems.reduce((sum, item) => {
+    const qty = itemSelections[item.id] || 0;
+    return sum + qty * parseFloat(item.unitPrice);
+  }, 0);
+
+  // Final amount to pay
+  let amountToPay = 0;
+  if (paymentMode === 'full') {
+    amountToPay = showSplit ? totalAmount / splitCount : remainingAmount;
+    // Clamp full/split modes to remaining
+    if (amountToPay > remainingAmount) amountToPay = remainingAmount;
+  } else if (paymentMode === 'itemized') {
+    amountToPay = itemizedTotal;
+    if (amountToPay > remainingAmount) amountToPay = remainingAmount;
+  } else if (paymentMode === 'custom') {
+    // Custom mode: allow any amount the user enters — no cap
+    amountToPay = parseFloat(customAmount) || 0;
   }
+
+  const apiPaymentType = paymentMode === 'full' ? (showSplit ? 'equal' : 'full') : paymentMode === 'itemized' ? 'itemized' : 'full';
 
   const handlePayment = async (method: 'cash' | 'credit_card') => {
     if (!session) return;
-    
-    if (calculatedAmountToPay <= 0) {
-      alert('Ödenecek tutar 0 olamaz.');
-      return;
-    }
+    if (amountToPay <= 0) { alert('Ödenecek tutar 0 olamaz.'); return; }
 
     setIsProcessing(true);
     try {
       const itemsPayload = Object.entries(itemSelections)
-        .filter(([id, qty]) => qty > 0)
+        .filter(([, qty]) => qty > 0)
         .map(([id, qty]) => ({ id, paidQuantity: qty }));
 
       const res = await fetch('/api/admin/cashier/payments', {
@@ -145,19 +154,16 @@ export default function CashierPanelPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sessionId: session.id,
-          amount: calculatedAmountToPay,
+          amount: amountToPay,
           method,
-          paymentType,
-          items: itemsPayload
+          paymentType: apiPaymentType,
+          items: itemsPayload,
         }),
       });
       const data = await res.json();
       if (data.success) {
-        if (data.data.isFullyPaid) {
-          setSelectedTableId(null);
-        }
-        setItemSelections({});
-        setPaymentType('full');
+        if (data.data.isFullyPaid) setSelectedTableId(null);
+        resetPanel();
         fetchTables();
       } else {
         alert('Ödeme hatası: ' + data.error);
@@ -180,81 +186,120 @@ export default function CashierPanelPage() {
     });
   };
 
-  if (isLoading) {
-    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', color: 'white' }}>Yükleniyor...</div>;
-  }
-
   const activeSessions = tables.filter(t => t.session !== null);
-  const totalOpenRevenue = activeSessions.reduce((sum, t) => sum + parseFloat(t.session!.totalAmount), 0);
-  const totalCollected = activeSessions.reduce((sum, t) => sum + parseFloat(t.session!.paidAmount), 0);
+  const totalOpenRevenue = activeSessions.reduce((s, t) => s + parseFloat(t.session!.totalAmount), 0);
+
+  if (isLoading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', fontSize: '1rem', color: 'var(--on-surface-variant)' }}>
+        Yükleniyor...
+      </div>
+    );
+  }
 
   return (
     <div className="admin-body" style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
-      
-      {/* HEADER */}
-      <header className="admin-header" style={{ padding: '0 24px', flexShrink: 0, zIndex: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <span className="material-symbols-outlined" style={{ fontSize: '28px', color: 'var(--primary)' }}>point_of_sale</span>
-          <div>
-            <h1 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, color: 'var(--on-surface)' }}>Kasa Paneli</h1>
+
+      {/* ── HEADER ── */}
+      <header style={{
+        height: 60,
+        flexShrink: 0,
+        background: 'var(--surface-container-lowest)',
+        borderBottom: '1px solid var(--surface-container-highest)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '0 20px',
+        gap: 12,
+        zIndex: 30,
+        boxShadow: '0 1px 8px rgba(0,0,0,0.06)',
+      }}>
+        {/* Brand */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: 10,
+            background: 'rgba(181,28,0,0.1)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--primary)' }}>point_of_sale</span>
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: '1rem', fontWeight: 900, letterSpacing: '-0.02em', lineHeight: 1.1, whiteSpace: 'nowrap' }}>Kasa Paneli</div>
+            <div style={{ fontSize: '0.7rem', color: 'var(--on-surface-variant)', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>SmartPay QR</div>
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '24px', alignItems: 'center' }}>
-          <div style={{ textAlign: 'right' }} className="hide-mobile">
-            <div style={{ fontSize: '0.75rem', color: 'var(--on-surface-variant)', fontWeight: 600 }}>TOPLAM AÇIK</div>
-            <div style={{ fontSize: '1.125rem', fontWeight: 800, color: 'var(--on-surface)' }}>₺{totalOpenRevenue.toFixed(0)}</div>
-          </div>
-          <button className="admin-logout-btn" onClick={handleLogout}>
-            <span className="material-symbols-outlined">logout</span>
-            Çıkış
-          </button>
+        {/* Centre stat */}
+        <div style={{
+          display: 'flex', flexDirection: 'column', alignItems: 'center',
+          background: 'var(--surface-container-low)',
+          borderRadius: 10, padding: '6px 16px',
+          flex: '0 0 auto',
+        }}>
+          <span style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--on-surface-variant)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Toplam Açık</span>
+          <span style={{ fontSize: '1.1rem', fontWeight: 900, color: 'var(--on-surface)', letterSpacing: '-0.02em' }}>₺{totalOpenRevenue.toFixed(2)}</span>
         </div>
+
+        {/* Logout */}
+        <button
+          onClick={handleLogout}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            background: 'var(--surface-container-low)',
+            border: '1.5px solid var(--outline-variant)',
+            borderRadius: 10, padding: '8px 14px',
+            fontSize: '0.8125rem', fontWeight: 700, cursor: 'pointer',
+            color: 'var(--on-surface-variant)',
+            transition: 'all 0.15s', flexShrink: 0,
+          }}
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: 18 }}>logout</span>
+          <span className="hide-mobile">Çıkış</span>
+        </button>
       </header>
 
-      {/* MAIN LAYOUT */}
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' }} className="cashier-main-container">
-        
-        {/* LEFT: Tables Grid */}
-        <div style={{ flex: 1, padding: '20px', overflowY: 'auto', background: 'var(--surface-container-lowest)' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '12px' }}>
+      {/* ── MAIN ── */}
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }} className="cashier-main-container">
+
+        {/* LEFT: Table grid */}
+        <div style={{ flex: 1, padding: 20, overflowY: 'auto', background: 'var(--surface-container-lowest)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 12 }}>
             {tables.map(table => {
-              const bg = getTableStatusColor(table);
+              const dot = getTableStatusColor(table);
               const isEmpty = !table.session;
               const tTotal = table.session ? parseFloat(table.session.totalAmount) : 0;
               const tPaid = table.session ? parseFloat(table.session.paidAmount) : 0;
-              const tRemaining = tTotal - tPaid;
+              const tRem = tTotal - tPaid;
               const isSelected = selectedTableId === table.id;
+              const hasItems = tTotal > 0;
 
               return (
-                <div 
+                <div
                   key={table.id}
                   onClick={() => {
                     if (!isEmpty) {
                       setSelectedTableId(table.id);
-                      setItemSelections({});
-                      setPaymentType('full');
+                      resetPanel();
                     }
                   }}
                   style={{
-                    background: isSelected ? 'var(--primary-container)' : 'var(--surface-container-low)',
-                    border: isSelected ? '2px solid var(--primary)' : '2px solid transparent',
-                    borderRadius: '12px',
-                    padding: '12px',
+                    background: isSelected ? 'rgba(181,28,0,0.08)' : 'var(--surface-container-low)',
+                    border: `2px solid ${isSelected ? 'var(--primary)' : 'transparent'}`,
+                    borderRadius: 12,
+                    padding: 12,
                     cursor: isEmpty ? 'default' : 'pointer',
-                    opacity: isEmpty ? 0.5 : 1,
+                    opacity: isEmpty ? 0.45 : 1,
                     transition: 'all 0.2s',
-                    boxShadow: isSelected ? '0 4px 12px rgba(0,0,0,0.1)' : 'none'
+                    boxShadow: isSelected ? '0 4px 12px rgba(181,28,0,0.12)' : 'none',
                   }}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                     <span style={{ fontWeight: 800 }}>Masa {table.tableNumber}</span>
-                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: bg }}></div>
+                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: dot }} />
                   </div>
-                  
                   {!isEmpty && (
                     <div style={{ fontSize: '0.8125rem' }}>
-                       <div style={{ color: tRemaining > 0 ? '#f44336' : '#4caf50', fontWeight: 800 }}>₺{tRemaining.toFixed(2)}</div>
+                      <span style={{ color: tRem > 0 ? '#f44336' : '#4caf50', fontWeight: 800 }}>₺{tRem.toFixed(2)}</span>
                     </div>
                   )}
                 </div>
@@ -263,146 +308,269 @@ export default function CashierPanelPage() {
           </div>
         </div>
 
-        {/* RIGHT: Detail & Payment Panel */}
+        {/* RIGHT: Detail panel */}
         {selectedTable && session && (
-          <div 
-            style={{ 
-              width: '400px', 
-              background: 'var(--surface-container-low)', 
-              display: 'flex', 
-              flexDirection: 'column', 
-              borderLeft: '1px solid var(--surface-container-highest)',
-              zIndex: 20
-            }} 
+          <div
+            style={{ width: 420, background: 'var(--surface-container-low)', display: 'flex', flexDirection: 'column', borderLeft: '1px solid var(--surface-container-highest)', zIndex: 20 }}
             className="cashier-detail-panel"
           >
-            {/* PANEL HEADER */}
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--surface-container-highest)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-               <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0 }}>Masa {selectedTable.tableNumber}</h2>
-               <button onClick={() => setSelectedTableId(null)} style={{ background: 'none', border: 'none', color: 'var(--on-surface)', cursor: 'pointer' }}>
-                 <span className="material-symbols-outlined">close</span>
-               </button>
+            {/* Panel header */}
+            <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--surface-container-highest)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0 }}>Masa {selectedTable.tableNumber}</h2>
+              <button onClick={() => { setSelectedTableId(null); resetPanel(); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--on-surface)' }}>
+                <span className="material-symbols-outlined">close</span>
+              </button>
             </div>
 
-            {/* SCROLLABLE CONTENT */}
+
+
+            {/* Scrollable order summary with item selection */}
             <div style={{ flex: 1, overflowY: 'auto' }}>
-              
-              {/* Product Summary */}
-              <div style={{ padding: '16px 20px', background: 'var(--surface-container-lowest)', borderBottom: '1px solid var(--surface-container-highest)' }}>
-                <h3 style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--on-surface-variant)', marginBottom: '12px', textTransform: 'uppercase' }}>Sipariş Özeti</h3>
-                {selectedTable.orders.map(order => (
-                  <div key={order.id} style={{ marginBottom: '8px' }}>
-                    {order.items.map(item => (
-                      <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem', marginBottom: '4px' }}>
-                        <span>{item.quantity}x {item.menuItem?.name || item.name}</span>
-                        <span>₺{parseFloat(item.totalPrice).toFixed(2)}</span>
-                      </div>
-                    ))}
-                  </div>
-                ))}
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px', paddingTop: '8px', borderTop: '1px dotted var(--surface-container-highest)', fontWeight: 800 }}>
-                  <span>TOPLAM</span>
-                  <span>₺{totalAmount.toFixed(2)}</span>
+              <div style={{ padding: '14px 20px' }}>
+                <div style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--on-surface-variant)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                  Sipariş Özeti {paymentMode === 'itemized' && <span style={{ color: 'var(--primary)' }}>— seçim modu</span>}
                 </div>
-              </div>
 
-              {/* Payment Tabs */}
-              <div style={{ display: 'flex', borderBottom: '1px solid var(--surface-container-highest)' }}>
-                <button onClick={() => setPaymentType('full')} style={{ flex: 1, padding: '12px', border: 'none', borderBottom: paymentType === 'full' ? '2px solid var(--primary)' : 'none', background: 'none', fontWeight: 700, cursor: 'pointer', color: paymentType === 'full' ? 'var(--primary)' : 'inherit' }}>TAMAMI</button>
-                <button onClick={() => setPaymentType('equal')} style={{ flex: 1, padding: '12px', border: 'none', borderBottom: paymentType === 'equal' ? '2px solid var(--primary)' : 'none', background: 'none', fontWeight: 700, cursor: 'pointer', color: paymentType === 'equal' ? 'var(--primary)' : 'inherit' }}>BÖL</button>
-                <button onClick={() => setPaymentType('itemized')} style={{ flex: 1, padding: '12px', border: 'none', borderBottom: paymentType === 'itemized' ? '2px solid var(--primary)' : 'none', background: 'none', fontWeight: 700, cursor: 'pointer', color: paymentType === 'itemized' ? 'var(--primary)' : 'inherit' }}>ÜRÜN</button>
-              </div>
+                {allItems.length === 0 && totalAmount <= 0 ? (
+                  <div style={{ color: 'var(--on-surface-variant)', fontSize: '0.875rem', textAlign: 'center', padding: '20px 0' }}>Sipariş yok</div>
+                ) : (
+                  selectedTable.orders.map(order =>
+                    order.items.map(item => {
+                      const availableQty = item.quantity - (item.paidQuantity || 0);
+                      const itemName = item.menuItem?.name || item.name;
+                      const unitPrice = parseFloat(item.unitPrice);
+                      const isSelectable = paymentMode === 'itemized' && availableQty > 0;
+                      const sQty = itemSelections[item.id] || 0;
+                      const isPaidOff = availableQty <= 0;
 
-              {/* Mode Specifics */}
-              <div style={{ padding: '20px' }}>
-                {paymentType === 'equal' && (
-                   <div style={{ textAlign: 'center' }}>
-                     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '20px', marginBottom: '16px' }}>
-                       <button onClick={() => setSplitCount(Math.max(2, splitCount - 1))} style={{ width: 36, height: 36, borderRadius: '50%', border: 'none', background: 'var(--surface-container-highest)' }}>-</button>
-                       <span style={{ fontSize: '1.5rem', fontWeight: 800 }}>{splitCount}</span>
-                       <button onClick={() => setSplitCount(splitCount + 1)} style={{ width: 36, height: 36, borderRadius: '50%', border: 'none', background: 'var(--surface-container-highest)' }}>+</button>
-                     </div>
-                     <div style={{ background: 'var(--surface-container-lowest)', padding: '12px', borderRadius: '8px' }}>
-                       <div style={{ fontSize: '0.75rem' }}>Kişi Başı</div>
-                       <div style={{ fontSize: '1.25rem', fontWeight: 700 }}>₺{(totalAmount / splitCount).toFixed(2)}</div>
-                     </div>
-                   </div>
+                      return (
+                        <div
+                          key={item.id}
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            padding: '10px 12px',
+                            marginBottom: 6,
+                            borderRadius: 10,
+                            background: sQty > 0 ? 'rgba(181,28,0,0.07)' : 'var(--surface-container-lowest)',
+                            border: `1.5px solid ${sQty > 0 ? 'var(--primary)' : 'transparent'}`,
+                            opacity: isPaidOff ? 0.45 : 1,
+                            transition: 'all 0.15s',
+                          }}
+                        >
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 600, fontSize: '0.875rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{itemName}</div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--on-surface-variant)' }}>
+                              {item.quantity}x · ₺{unitPrice.toFixed(2)} / adet
+                              {isPaidOff && <span style={{ color: '#4caf50', marginLeft: 6, fontWeight: 700 }}>✓ Ödendi</span>}
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 8 }}>
+                            {isSelectable ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <button
+                                  onClick={() => handleItemQtyChange(item.id, availableQty, -1)}
+                                  style={{ width: 26, height: 26, borderRadius: '50%', border: 'none', background: 'var(--surface-container-highest)', cursor: 'pointer', fontWeight: 800, fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                >−</button>
+                                <span style={{ fontWeight: 800, minWidth: 16, textAlign: 'center' }}>{sQty}</span>
+                                <button
+                                  onClick={() => handleItemQtyChange(item.id, availableQty, 1)}
+                                  style={{ width: 26, height: 26, borderRadius: '50%', border: 'none', background: sQty < availableQty ? 'var(--primary)' : 'var(--surface-container-highest)', color: sQty < availableQty ? '#fff' : 'inherit', cursor: 'pointer', fontWeight: 800, fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                >+</button>
+                              </div>
+                            ) : (
+                              <span style={{ fontWeight: 700, fontSize: '0.875rem' }}>₺{parseFloat(item.totalPrice).toFixed(2)}</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )
                 )}
 
-                {paymentType === 'itemized' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {selectedTable.orders.map(order => 
-                      order.items.map(item => {
-                        const availableQty = item.quantity - (item.paidQuantity || 0);
-                        if (availableQty <= 0) return null;
-                        const sQty = itemSelections[item.id] || 0;
-                        return (
-                          <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--surface-container-lowest)', padding: '10px', borderRadius: '10px' }}>
-                             <div style={{ fontSize: '0.8125rem' }}>{item.menuItem?.name || item.name} ({availableQty})</div>
-                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                               <button onClick={() => handleItemQtyChange(item.id, availableQty, -1)} style={{ width: 24, height: 24, borderRadius: '50%', border: 'none', background: 'var(--surface-container-highest)' }}>-</button>
-                               <span style={{ fontWeight: 800 }}>{sQty}</span>
-                               <button onClick={() => handleItemQtyChange(item.id, availableQty, 1)} style={{ width: 24, height: 24, borderRadius: '50%', border: 'none', background: 'var(--surface-container-highest)' }}>+</button>
-                             </div>
-                          </div>
-                        )
-                      })
+                {/* Totals row */}
+                {totalAmount > 0 && (
+                  <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px dashed var(--surface-container-highest)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem', color: 'var(--on-surface-variant)', marginBottom: 4 }}>
+                      <span>Toplam</span><span>₺{totalAmount.toFixed(2)}</span>
+                    </div>
+                    {paidAmount > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem', color: '#4caf50', marginBottom: 4 }}>
+                        <span>Ödenen</span><span>−₺{paidAmount.toFixed(2)}</span>
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: '0.9375rem' }}>
+                      <span>Kalan</span><span style={{ color: remainingAmount > 0 ? '#f44336' : '#4caf50' }}>₺{remainingAmount.toFixed(2)}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Payment mode toggle buttons */}
+              {totalAmount > 0 && (
+                <div style={{ padding: '0 20px 12px' }}>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {[
+                      { mode: 'full' as const, label: 'Tamamı' },
+                      { mode: 'itemized' as const, label: 'Ürün Seç' },
+                      { mode: 'custom' as const, label: 'Tutar Gir' },
+                    ].map(({ mode, label }) => (
+                      <button
+                        key={mode}
+                        onClick={() => { setPaymentMode(mode); setShowSplit(false); }}
+                        style={{
+                          flex: 1,
+                          padding: '9px 4px',
+                          borderRadius: 8,
+                          border: `1.5px solid ${paymentMode === mode ? 'var(--primary)' : 'var(--outline-variant)'}`,
+                          background: paymentMode === mode ? 'rgba(181,28,0,0.08)' : 'var(--surface-container-lowest)',
+                          color: paymentMode === mode ? 'var(--primary)' : 'var(--on-surface-variant)',
+                          fontWeight: 700,
+                          fontSize: '0.75rem',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s',
+                        }}
+                      >{label}</button>
+                    ))}
+                  </div>
+
+                  {/* Custom amount input */}
+                  {paymentMode === 'custom' && (
+                    <div style={{ marginTop: 12 }}>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--on-surface-variant)', display: 'block', marginBottom: 6 }}>Ödenecek Tutar (₺)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder={`Maks. ₺${remainingAmount.toFixed(2)}`}
+                        value={customAmount}
+                        onChange={e => setCustomAmount(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '12px 14px',
+                          borderRadius: 10,
+                          border: '2px solid var(--outline-variant)',
+                          fontSize: '1.25rem',
+                          fontWeight: 800,
+                          outline: 'none',
+                          background: 'var(--surface-container-lowest)',
+                          color: 'var(--on-surface)',
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* ── FIXED FOOTER ── */}
+            {totalAmount > 0 && (
+              <div style={{ padding: '16px 20px', background: 'var(--surface-container-lowest)', borderTop: '1px solid var(--surface-container-highest)', flexShrink: 0 }}>
+
+                {/* Amount display */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 12 }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--on-surface-variant)' }}>
+                    {paymentMode === 'itemized' ? 'SEÇİLEN ÜRÜNLER' : paymentMode === 'custom' ? 'GİRİLEN TUTAR' : showSplit ? `${splitCount} KİŞİLİK PAY` : 'ÖDENECEK'}
+                  </div>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 800, color: amountToPay > 0 ? 'var(--on-surface)' : 'var(--on-surface-variant)' }}>
+                    ₺{amountToPay.toFixed(2)}
+                  </div>
+                </div>
+
+                {/* Böl button (only on 'full' mode) */}
+                {paymentMode === 'full' && (
+                  <div style={{ marginBottom: 12 }}>
+                    {!showSplit ? (
+                      <button
+                        onClick={() => setShowSplit(true)}
+                        style={{
+                          width: '100%',
+                          padding: '10px',
+                          borderRadius: 10,
+                          border: '1.5px dashed var(--outline-variant)',
+                          background: 'transparent',
+                          color: 'var(--on-surface-variant)',
+                          fontWeight: 700,
+                          fontSize: '0.875rem',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 6,
+                        }}
+                      >
+                        <span className="material-symbols-outlined" style={{ fontSize: 18 }}>call_split</span>
+                        Böl
+                      </button>
+                    ) : (
+                      <div style={{ background: 'var(--surface-container-low)', borderRadius: 12, padding: '12px 14px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                          <span style={{ fontWeight: 700, fontSize: '0.875rem' }}>Kaç kişiye bölünsün?</span>
+                          <button onClick={() => setShowSplit(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--on-surface-variant)', fontSize: '0.75rem' }}>İptal</button>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 20 }}>
+                          <button
+                            onClick={() => setSplitCount(c => Math.max(2, c - 1))}
+                            style={{ width: 36, height: 36, borderRadius: '50%', border: 'none', background: 'var(--surface-container-highest)', fontWeight: 800, fontSize: '1.25rem', cursor: 'pointer' }}
+                          >−</button>
+                          <span style={{ fontSize: '1.5rem', fontWeight: 800, minWidth: 32, textAlign: 'center' }}>{splitCount}</span>
+                          <button
+                            onClick={() => setSplitCount(c => c + 1)}
+                            style={{ width: 36, height: 36, borderRadius: '50%', border: 'none', background: 'var(--primary)', color: '#fff', fontWeight: 800, fontSize: '1.25rem', cursor: 'pointer' }}
+                          >+</button>
+                        </div>
+                        <div style={{ textAlign: 'center', marginTop: 8, fontSize: '0.8125rem', color: 'var(--on-surface-variant)' }}>
+                          Kişi başı: <strong>₺{(totalAmount / splitCount).toFixed(2)}</strong>
+                        </div>
+                      </div>
                     )}
                   </div>
                 )}
 
-                {paymentType === 'full' && (
-                   <div style={{ textAlign: 'center', color: 'var(--on-surface-variant)', fontSize: '0.875rem' }}>Tüm borç tek seferde kapatılacak.</div>
-                )}
+                {/* Cash / Card buttons */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <button
+                    disabled={isProcessing || amountToPay <= 0}
+                    onClick={() => handlePayment('cash')}
+                    style={{
+                      background: '#4caf50', color: '#fff', border: 'none', borderRadius: 10,
+                      padding: '14px', fontWeight: 800, fontSize: '0.9375rem', cursor: 'pointer',
+                      opacity: isProcessing || amountToPay <= 0 ? 0.45 : 1,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                      transition: 'opacity 0.15s',
+                    }}
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: 18 }}>payments</span>
+                    NAKİT
+                  </button>
+                  <button
+                    disabled={isProcessing || amountToPay <= 0}
+                    onClick={() => handlePayment('credit_card')}
+                    style={{
+                      background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 10,
+                      padding: '14px', fontWeight: 800, fontSize: '0.9375rem', cursor: 'pointer',
+                      opacity: isProcessing || amountToPay <= 0 ? 0.45 : 1,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                      transition: 'opacity 0.15s',
+                    }}
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: 18 }}>credit_card</span>
+                    KART
+                  </button>
+                </div>
               </div>
-
-            </div>
-
-            {/* FIXED FOOTER */}
-            <div style={{ padding: '20px', background: 'var(--surface-container-lowest)', borderTop: '1px solid var(--surface-container-highest)', flexShrink: 0 }}>
-               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', alignItems: 'flex-end' }}>
-                 <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--primary)' }}>ÖDENECEK</div>
-                 <div style={{ fontSize: '1.75rem', fontWeight: 800 }}>₺{calculatedAmountToPay.toFixed(2)}</div>
-               </div>
-
-               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                 <button 
-                   disabled={isProcessing || calculatedAmountToPay <= 0}
-                   onClick={() => handlePayment('cash')}
-                   style={{ background: '#4caf50', color: 'white', border: 'none', borderRadius: '10px', padding: '14px', fontWeight: 800, cursor: 'pointer', opacity: (isProcessing || calculatedAmountToPay <= 0) ? 0.5 : 1 }}
-                 >
-                   NAKİT
-                 </button>
-                 <button 
-                   disabled={isProcessing || calculatedAmountToPay <= 0}
-                   onClick={() => handlePayment('credit_card')}
-                   style={{ background: 'var(--primary)', color: 'white', border: 'none', borderRadius: '10px', padding: '14px', fontWeight: 800, cursor: 'pointer', opacity: (isProcessing || calculatedAmountToPay <= 0) ? 0.5 : 1 }}
-                 >
-                   KART
-                 </button>
-               </div>
-            </div>
-
+            )}
           </div>
         )}
-
       </div>
 
       <style jsx>{`
         @media (max-width: 900px) {
-          .cashier-main-container {
-            flex-direction: column;
-            overflow-y: auto !important;
-          }
-          .cashier-detail-panel {
-            width: 100% !important;
-            border-left: none !important;
-            border-top: 1px solid var(--surface-container-highest);
-            flex: none !important;
-          }
-          .hide-mobile {
-            display: none;
-          }
+          .cashier-main-container { flex-direction: column; overflow-y: auto !important; }
+          .cashier-detail-panel { width: 100% !important; border-left: none !important; border-top: 1px solid var(--surface-container-highest); flex: none !important; }
+          .hide-mobile { display: none; }
         }
       `}</style>
     </div>

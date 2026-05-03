@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
 import { db } from '@/lib/db';
-import { tables, categories, menuItems } from '@/lib/db/schema';
+import { tables, tableSessions, categories, menuItems } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import TableClient, { type MenuItem, type Category, type TableData, type RestaurantData } from './TableClient';
 
@@ -21,11 +21,24 @@ export default async function MenuPage() {
     redirect('/');
   }
 
-  const { tableId, tableNumber, tableLabel, restaurantId, sessionId, restaurantName } = cookieData;
+  const { tableId, tableNumber, tableLabel, restaurantId, sessionId, restaurantName, tableToken } = cookieData;
 
   if (!tableId || !sessionId) {
     redirect('/');
   }
+
+  // 1b. Validate the session in the cookie is still ACTIVE.
+  // If the previous guests paid and the session was closed, new guests
+  // who have a stale cookie must be forced to re-scan the QR for a fresh session.
+  const cookieSession = await db.query.tableSessions.findFirst({
+    where: eq(tableSessions.id, sessionId),
+  });
+  if (!cookieSession || cookieSession.status === 'closed' || cookieSession.status === 'cancelled') {
+    // Redirect to a Route Handler that can legally delete cookies, then goes to '/'.
+    // Server Components cannot call cookieStore.delete() in Next.js 16.
+    redirect('/api/session/clear');
+  }
+
 
   // 2. Read participant cookie (may not exist yet)
   const participantCookie = cookieStore.get('smartpay_participant');

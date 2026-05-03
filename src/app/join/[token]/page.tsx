@@ -67,25 +67,15 @@ export default async function JoinPage({
         <div style={{ textAlign: 'center', background: '#fff', padding: 30, borderRadius: 20 }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>⚠️</div>
           <h1 style={{ fontSize: 22, marginBottom: 10, fontWeight: 700 }}>Geçersiz QR Kod</h1>
-          <p style={{ color: '#6B6B6B', fontSize: 14 }}>Bu QR kod geçersiz veya süresi dolmuş. Lütfen garsondan yeni bir QR kod isteyin.</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (table.tokenExpiresAt && new Date(table.tokenExpiresAt) < new Date()) {
-    return (
-      <div className="app-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', padding: 20 }}>
-        <div style={{ textAlign: 'center', background: '#fff', padding: 30, borderRadius: 20 }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>⏰</div>
-          <h1 style={{ fontSize: 22, marginBottom: 10, fontWeight: 700 }}>Süresi Dolmuş</h1>
-          <p style={{ color: '#6B6B6B', fontSize: 14 }}>Bu QR kodun süresi dolmuş. Güvenlik sebebiyle kodlar periyodik olarak yenilenmektedir.</p>
+          <p style={{ color: '#6B6B6B', fontSize: 14 }}>Bu QR kod geçersiz. Lütfen garsondan yardım isteyin.</p>
         </div>
       </div>
     );
   }
 
   // 2. Ensure active session exists
+  // If there's no active session (e.g. previous guests paid and session was closed),
+  // a brand-new session is created automatically. The QR token never changes.
   let activeSession = table.sessions?.[0] || null;
   if (!activeSession) {
     const [newSession] = await db
